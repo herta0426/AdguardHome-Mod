@@ -1,6 +1,6 @@
 {
-  "version": "v2026-09-25-beta-1",
-  "announcement": "AdGuard Home Mod v2026-09-25-beta-1 已发布。",
-  "announcement_url": "https://github.com/liuzq2002/AdguardHome-Mod/releases/tag/v2026-09-25-beta-1",
-  "download_linux_arm64": "https://github.com/liuzq2002/AdguardHome-Mod/releases/download/v2026-09-25-beta-1/AdGuardHome_linux_arm64.tar.gz"
+  "version": "v2026-09-27",
+  "announcement": "AdGuard Home Mod v2026-09-27 已发布。",
+  "announcement_url": "https://github.com/liuzq2002/AdguardHome-Mod/releases/tag/v2026-09-27",
+  "download_linux_arm64": "https://github.com/liuzq2002/AdguardHome-Mod/releases/download/v2026-09-27/AdGuardHome_linux_arm64.tar.gz"
 }
