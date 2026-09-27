@@ -15,6 +15,7 @@ interface ResponseCellProps {
     response: unknown[];
     status: string;
     upstream: string;
+    destination?: string;
     cached: boolean;
     rules?: {
         text: string;
@@ -29,6 +30,7 @@ const ResponseCell = ({
     response,
     status,
     upstream,
+    destination,
     rules,
     cached,
 }: ResponseCellProps) => {
@@ -83,6 +85,7 @@ const ResponseCell = ({
         }),
         elapsed: formattedElapsedMs,
         response_code: status,
+        ...(destination && { destination }),
         ...(rules.length > 0 && { rule_label: getRulesToFilterList(rules, filters, whitelistFilters) }),
         response_table_header: renderResponses(response),
         original_response: renderResponses(originalResponse),

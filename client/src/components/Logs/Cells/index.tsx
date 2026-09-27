@@ -52,6 +52,7 @@ interface RowProps {
             category: string;
         };
         upstream: string;
+        destination?: string;
         cached: boolean;
         type: string;
         client_proto: string;
@@ -115,6 +116,7 @@ const Row = memo(
                 time,
                 tracker,
                 upstream,
+                destination,
                 type,
                 client_proto,
                 client_id,
@@ -196,6 +198,7 @@ const Row = memo(
                 ...(rules.length > 0 && { rule_label: getRulesToFilterList(rules, filters, whitelistFilters) }),
                 response_table_header: response?.join('\n'),
                 response_code: status,
+                ...(destination && { destination }),
                 client_details: 'title',
                 ip_address: client,
                 name: client_info?.name || client_id,

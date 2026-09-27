@@ -54,6 +54,7 @@ func TestQueryLog_DecodeLogEntry_success(t *testing.T) {
 		`"CanonName":"example.com",` +
 		`"DNSRewriteResult":{"RCode":0,"Response":{"1":["127.0.0.2"]}}},` +
 		`"Upstream":"https://some.upstream",` +
+		`"Dst":"192.0.2.1:443",` +
 		`"Elapsed":837429}`
 
 	ans, err := base64.StdEncoding.DecodeString(ansStr)
@@ -94,6 +95,7 @@ func TestQueryLog_DecodeLogEntry_success(t *testing.T) {
 		Cached:            true,
 		Result:            result,
 		Upstream:          "https://some.upstream",
+		Dst:               "192.0.2.1:443",
 		Elapsed:           837429,
 		AuthenticatedData: true,
 	}

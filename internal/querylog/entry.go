@@ -30,6 +30,10 @@ type logEntry struct {
 
 	Upstream string `json:",omitempty"`
 
+	// Dst is the destination address of the connection, if known.  It's empty
+	// for the regular DNS requests.  See [AddParams.Dst].
+	Dst string `json:"Dst,omitempty"`
+
 	Answer     []byte `json:",omitempty"`
 	OrigAnswer []byte `json:",omitempty"`
 

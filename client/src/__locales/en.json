@@ -93,6 +93,7 @@
   "default": "Default",
   "delete_table_action": "Delete",
   "descr": "Description",
+  "destination": "Destination",
   "details": "Details",
   "disable_for_hours": "For {{count}} hour",
   "disable_for_hours_plural": "For {{count}} hours",

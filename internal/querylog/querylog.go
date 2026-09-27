@@ -104,6 +104,11 @@ type AddParams struct {
 	// Upstream is the URL of the upstream DNS server.
 	Upstream string
 
+	// Dst is the destination address of the connection, if known.  It's only
+	// set for the entries that don't come from the DNS requests themselves,
+	// such as the ones recorded by the SNI filtering.
+	Dst string
+
 	ClientProto ClientProto
 
 	ClientIP net.IP

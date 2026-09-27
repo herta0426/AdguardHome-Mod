@@ -196,6 +196,7 @@ func newLogEntry(ctx context.Context, logger *slog.Logger, params *AddParams) (e
 
 		Result:   *params.Result,
 		Upstream: params.Upstream,
+		Dst:      params.Dst,
 
 		IP: params.ClientIP,
 

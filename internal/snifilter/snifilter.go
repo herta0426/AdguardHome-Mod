@@ -473,9 +473,18 @@ func (f *Filter) logConnection(p *packet, host string, res *filtering.Result) {
 	req.SetQuestion(dns.Fqdn(host), dns.TypeA)
 	req.RecursionDesired = true
 
+	// A TLS connection has no upstream, but it does have a destination, which
+	// the DNS requests don't make visible.  Record it, so that the address the
+	// application actually connected to can be seen in the details.
+	var dst string
+	if p.dst.IsValid() {
+		dst = p.dst.String()
+	}
+
 	f.queryLog.Add(&querylog.AddParams{
 		Question: req,
 		Result:   logRes,
+		Dst:      dst,
 		ClientIP: p.src.Addr().AsSlice(),
 	})
 }
