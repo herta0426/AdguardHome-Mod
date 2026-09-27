@@ -58,65 +58,50 @@ func TestParams_Validate(t *testing.T) {
 	}, {
 		name: "valid",
 		params: Params{
-			Enabled:     true,
-			ManageRules: true,
-			QueueNum:    7,
-			Ports:       []uint16{443},
-			UIDs:        []string{"1000", "10000-19999"},
+			Enabled:  true,
+			QueueNum: 7,
+			Ports:    []uint16{443},
+			UIDs:     []string{"1000", "10000-19999"},
 		},
 		wantErr: false,
 	}, {
 		name: "no_ports",
 		params: Params{
-			Enabled:     true,
-			ManageRules: true,
-			Ports:       nil,
+			Enabled: true,
+			Ports:   nil,
 		},
 		wantErr: true,
 	}, {
 		name: "zero_port",
 		params: Params{
-			Enabled:     true,
-			ManageRules: true,
-			Ports:       []uint16{0},
+			Enabled: true,
+			Ports:   []uint16{0},
 		},
 		wantErr: true,
 	}, {
 		name: "bad_uid",
 		params: Params{
-			Enabled:     true,
-			ManageRules: true,
-			Ports:       []uint16{443},
-			UIDs:        []string{"root"},
+			Enabled: true,
+			Ports:   []uint16{443},
+			UIDs:    []string{"root"},
 		},
 		wantErr: true,
 	}, {
 		name: "bad_uid_range",
 		params: Params{
-			Enabled:     true,
-			ManageRules: true,
-			Ports:       []uint16{443},
-			UIDs:        []string{"100-1"},
+			Enabled: true,
+			Ports:   []uint16{443},
+			UIDs:    []string{"100-1"},
 		},
 		wantErr: true,
 	}, {
 		name: "bad_uid_range_empty",
 		params: Params{
-			Enabled:     true,
-			ManageRules: true,
-			Ports:       []uint16{443},
-			UIDs:        []string{"-100"},
+			Enabled: true,
+			Ports:   []uint16{443},
+			UIDs:    []string{"-100"},
 		},
 		wantErr: true,
-	}, {
-		name: "rules_managed_externally",
-		params: Params{
-			Enabled:     true,
-			ManageRules: false,
-			Ports:       nil,
-			UIDs:        []string{"not a uid"},
-		},
-		wantErr: false,
 	}}
 
 	for _, tc := range testCases {
