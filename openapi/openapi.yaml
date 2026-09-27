@@ -1182,6 +1182,8 @@
         - 'Rewrite'
         - 'RewriteEtcHosts'
         - 'RewriteRule'
+        - 'FilteredSNI'
+        - 'NotFilteredSNI'
     'ServerStatus':
       'type': 'object'
       'description': 'AdGuard Home server status and configuration'
@@ -1797,6 +1799,13 @@
           'description': >
             Upstream URL starting with tcp://, tls://, https://, or with an IP
             address.
+        'destination':
+          'type': 'string'
+          'example': '192.0.2.1:443'
+          'description': >
+            The destination address of the connection.  It is only set for the
+            entries that are not actual DNS requests, such as the ones added by
+            the SNI filtering.
         'answer_dnssec':
           'description': >
             If true, the response had the Authenticated Data (AD) flag set.

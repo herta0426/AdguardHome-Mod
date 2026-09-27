@@ -233,7 +233,10 @@ func TestFilter_logConnection(t *testing.T) {
 		flows:    map[flowKey]*flow{},
 	}
 
-	p := &packet{src: netip.MustParseAddrPort("127.0.0.1:12345")}
+	p := &packet{
+		src: netip.MustParseAddrPort("127.0.0.1:12345"),
+		dst: netip.MustParseAddrPort("192.0.2.1:443"),
+	}
 
 	t.Run("blocked", func(t *testing.T) {
 		res := f.checkHost("blocked.test")
@@ -248,6 +251,7 @@ func TestFilter_logConnection(t *testing.T) {
 		require.Len(t, ql.added.Result.Rules, 1)
 		assert.Equal(t, "||blocked.test^", ql.added.Result.Rules[0].Text)
 		assert.Equal(t, []byte{127, 0, 0, 1}, []byte(ql.added.ClientIP))
+		assert.Equal(t, "192.0.2.1:443", ql.added.Dst)
 	})
 
 	t.Run("allowed", func(t *testing.T) {
@@ -261,6 +265,7 @@ func TestFilter_logConnection(t *testing.T) {
 		assert.Equal(t, filtering.NotFilteredSNI, ql.added.Result.Reason)
 		assert.False(t, ql.added.Result.IsFiltered)
 		assert.Empty(t, ql.added.Result.Rules)
+		assert.Equal(t, "192.0.2.1:443", ql.added.Dst)
 	})
 
 	t.Run("allowed_by_rule", func(t *testing.T) {
@@ -273,6 +278,17 @@ func TestFilter_logConnection(t *testing.T) {
 
 		assert.Equal(t, filtering.NotFilteredSNI, ql.added.Result.Reason)
 		require.Len(t, ql.added.Result.Rules, 1)
+		assert.Equal(t, "192.0.2.1:443", ql.added.Dst)
+	})
+
+	t.Run("no_destination", func(t *testing.T) {
+		res := f.checkHost("example.org")
+		require.False(t, res.IsFiltered)
+
+		f.logConnection(&packet{src: p.src}, "example.org", res)
+		require.NotNil(t, ql.added)
+
+		assert.Empty(t, ql.added.Dst)
 	})
 }
 

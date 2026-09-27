@@ -93,6 +93,7 @@
   "default": "預設",
   "delete_table_action": "刪除",
   "descr": "說明",
+  "destination": "目標位址",
   "details": "細節",
   "disable_for_hours": "{{count}} 小時",
   "disable_for_hours_plural": "{{count}} 小時",

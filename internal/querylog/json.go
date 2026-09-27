@@ -64,6 +64,7 @@ func (l *queryLog) entryToJSON(
 		"client_proto": entry.ClientProto,
 		"cached":       entry.Cached,
 		"upstream":     entry.Upstream,
+		"destination":  entry.Dst,
 		"question":     question,
 		"rules":        resultRulesToJSONRules(entry.Result.Rules),
 	}

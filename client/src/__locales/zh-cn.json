@@ -93,6 +93,7 @@
   "default": "默认",
   "delete_table_action": "删除",
   "descr": "描述",
+  "destination": "目标地址",
   "details": "详细信息",
   "disable_for_hours": "{{count}} 小时",
   "disable_for_hours_plural": "{{count}} 小时",

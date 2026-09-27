@@ -73,6 +73,7 @@ export const normalizeLogs = (logs: any) =>
             rules,
             original_answer,
             upstream,
+            destination,
             cached,
             ecs,
         } = log;
@@ -118,6 +119,7 @@ export const normalizeLogs = (logs: any) =>
             answer_dnssec,
             elapsedMs,
             upstream,
+            destination,
             cached,
             ecs,
         };

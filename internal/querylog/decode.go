@@ -158,6 +158,16 @@ var logEntryHandlers = map[string]logEntryHandler{
 
 		return nil
 	},
+	"Dst": func(t json.Token, ent *logEntry) error {
+		v, ok := t.(string)
+		if !ok {
+			return nil
+		}
+
+		ent.Dst = v
+
+		return nil
+	},
 	"Elapsed": func(t json.Token, ent *logEntry) error {
 		v, ok := t.(json.Number)
 		if !ok {
