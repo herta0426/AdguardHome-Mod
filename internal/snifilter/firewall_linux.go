@@ -3,15 +3,11 @@
 package snifilter
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
@@ -20,26 +16,14 @@ import (
 )
 
 const (
-	// chainName is the name of the netfilter chain managed by the SNI filter.
+	// chainName is the name of the netfilter chain the rules that send the
+	// packets to the queue are expected to be in.  AdGuard Home doesn't
+	// install these rules itself, see the sni_filter documentation.
 	chainName = "AGH_SNI"
-
-	// outputChain is the name of the netfilter chain that the filter's chain
-	// is called from.
-	outputChain = "OUTPUT"
-
-	// filterTable is the name of the netfilter table the filter works in.
-	filterTable = "filter"
-
-	// connBytesLimit is the number of bytes at the beginning of every
-	// connection that are sent to the userspace.  A ClientHello is limited by
-	// a single TLS record, so this is enough to read the server name even
-	// when it spans several TCP segments, and to catch the retransmissions of
-	// them.
-	connBytesLimit = 20000
 
 	// maxQueueLen is the maximum number of packets waiting for the verdict.
 	// The rest of the packets are passed through by the kernel, see the
-	// queue-bypass option of the rule.
+	// queue-bypass option of the rules.
 	maxQueueLen = 1024
 
 	// queueReadTimeout is the time the queue waits for the packets.
@@ -49,32 +33,15 @@ const (
 	// to the kernel.
 	queueWriteTimeout = 20 * time.Millisecond
 
-	// rulesCheckInterval is the interval at which the filter checks that its
-	// netfilter rules are still installed.  Some of the network managers and
-	// Android modules flush the rules when the network changes.
-	rulesCheckInterval = 30 * time.Second
-
-	// shutdownTimeout is the time given to the commands that remove the
-	// rules on shutdown.
-	shutdownTimeout = 10 * time.Second
+	// flowsCheckInterval is the interval at which the state of the
+	// connections that are not active anymore is removed.
+	flowsCheckInterval = 30 * time.Second
 )
 
 // platform is the Linux-specific state of the SNI filter.
 type platform struct {
 	// nf is the connection to the netfilter queue subsystem.
 	nf *nfqueue.Nfqueue
-
-	// iptables is the resolved path to the command that manages the IPv4
-	// rules.  It's empty if the rules are not installed.
-	iptables string
-
-	// ip6tables is the resolved path to the command that manages the IPv6
-	// rules.  It's empty if the rules are not installed.
-	ip6tables string
-
-	// rulesMu protects the rules and the paths to the commands that manage
-	// them.
-	rulesMu sync.Mutex
 
 	// raw4 is the raw socket used to inject the IPv4 reset segments.  It's
 	// negative if the socket is not available.
@@ -85,8 +52,11 @@ type platform struct {
 	raw6 int
 }
 
-// startFirewall installs the netfilter rules and starts inspecting the
-// connections.  ctx must be canceled when the filter is shut down.
+// startFirewall opens the packet queue and the sockets used to reset the
+// blocked connections.  The netfilter rules that send the packets to the queue
+// are installed and removed by the operator, for example by a Magisk module
+// script, so AdGuard Home doesn't touch iptables at all.  ctx must be canceled
+// when the filter is shut down.
 func (f *Filter) startFirewall(ctx context.Context) (err error) {
 	f.openRawSockets()
 
@@ -97,230 +67,36 @@ func (f *Filter) startFirewall(ctx context.Context) (err error) {
 		return fmt.Errorf("opening the queue: %w", err)
 	}
 
-	if !f.manageRules {
-		// The rules are installed and removed by the operator, for example by
-		// the script of a Magisk module.
-		f.logger.InfoContext(
-			ctx,
-			"netfilter rules aren't managed by adguard home; make sure "+
-				"they send the packets to the queue",
-			"chain", chainName,
-			"queue_num", f.queueNum,
-		)
-
-		return nil
-	}
-
-	err = f.setupRules(ctx)
-	if err != nil {
-		f.closeQueue()
-		f.closeRawSockets()
-
-		return fmt.Errorf("installing the netfilter rules: %w", err)
-	}
-
 	f.wg.Add(1)
-	go f.watchRules(ctx)
+	go f.watchFlows(ctx)
+
+	// The ports, the UIDs, and the drop_quic setting are only used to build
+	// the rules, so they don't affect AdGuard Home anymore.
+	f.logger.InfoContext(
+		ctx,
+		"waiting for the packets; the netfilter rules are installed by the "+
+			"operator",
+		"chain", chainName,
+		"queue_num", f.queueNum,
+	)
 
 	f.checkReversePathFilter(ctx)
 
 	return nil
 }
 
-// stopFirewall removes the netfilter rules and stops inspecting the
-// connections.
-func (f *Filter) stopFirewall(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
-	defer cancel()
-
-	if f.manageRules {
-		f.removeRules(ctx)
-	}
-
+// stopFirewall closes the packet queue and the raw sockets.  The netfilter
+// rules aren't touched, since they are installed by the operator.
+func (f *Filter) stopFirewall(_ context.Context) {
 	f.closeQueue()
 	f.closeRawSockets()
 }
 
-// setupRules installs the rules that send the beginnings of the outgoing TLS
-// connections to the queue.  It requires the root rights.
-func (f *Filter) setupRules(ctx context.Context) (err error) {
-	f.rulesMu.Lock()
-	defer f.rulesMu.Unlock()
-
-	f.iptables, err = exec.LookPath("iptables")
-	if err != nil {
-		return fmt.Errorf("looking up iptables: %w", err)
-	}
-
-	err = f.setupChainRules(ctx, f.iptables)
-	if err != nil {
-		return fmt.Errorf("installing the ipv4 rules: %w", err)
-	}
-
-	// Devices that don't use IPv6 may not have the command at all, so the
-	// lack of it is not an error.
-	f.ip6tables, err = exec.LookPath("ip6tables")
-	if err != nil {
-		f.ip6tables = ""
-		f.logger.WarnContext(
-			ctx,
-			"ip6tables is not available; ipv6 connections are not inspected",
-			slogutil.KeyError,
-			err,
-		)
-
-		return nil
-	}
-
-	err = f.setupChainRules(ctx, f.ip6tables)
-	if err != nil {
-		f.ip6tables = ""
-		f.logger.WarnContext(
-			ctx,
-			"installing the ipv6 rules",
-			slogutil.KeyError,
-			err,
-		)
-	}
-
-	return nil
-}
-
-// setupChainRules installs the rules of the filter for one protocol family.
-// cmd must be the path to the command that manages the rules of that family.
-// f.rulesMu must be locked.
-func (f *Filter) setupChainRules(ctx context.Context, cmd string) (err error) {
-	// Create the chain if it's not there, the error means it exists.
-	_ = f.runCmd(ctx, cmd, "-N", chainName)
-
-	err = f.runCmd(ctx, cmd, "-F", chainName)
-	if err != nil {
-		return err
-	}
-
-	for _, args := range f.chainRuleArgs() {
-		err = f.runCmd(ctx, cmd, args...)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Make sure that the chain is called from the output chain.
-	err = f.runCmd(ctx, cmd, "-C", outputChain, "-j", chainName)
-	if err == nil {
-		return nil
-	}
-
-	return f.runCmd(ctx, cmd, "-I", outputChain, "1", "-j", chainName)
-}
-
-// chainRuleArgs returns the argument lists of the rules of the filter's chain.
-func (f *Filter) chainRuleArgs() (rules [][]string) {
-	// The loopback traffic isn't a part of the network activity that needs to
-	// be filtered, and blocking it may break the local services.
-	rules = append(rules, []string{"-A", chainName, "-o", "lo", "-j", "RETURN"})
-
-	if f.dropQUIC {
-		args := []string{
-			"-A", chainName,
-			"-p", "udp",
-			"-m", "multiport", "--dports", f.portsArg(),
-		}
-		args = append(args, f.ownerArgs()...)
-		args = append(args, "-j", "REJECT")
-
-		rules = append(rules, args)
-	}
-
-	args := []string{
-		"-A", chainName,
-		"-p", "tcp",
-		"-m", "multiport", "--dports", f.portsArg(),
-	}
-	args = append(args, f.ownerArgs()...)
-	args = append(
-		args,
-		"-m", "connbytes",
-		"--connbytes", "0:"+strconv.Itoa(connBytesLimit),
-		"--connbytes-dir", "original",
-		"--connbytes-mode", "bytes",
-		"-j", "NFQUEUE",
-		"--queue-num", strconv.FormatUint(uint64(f.queueNum), 10),
-		"--queue-bypass",
-	)
-
-	return append(rules, args)
-}
-
-// portsArg returns the argument of the multiport match with the inspected
-// ports.
-func (f *Filter) portsArg() (ports string) {
-	nums := make([]string, len(f.ports))
-	for i, p := range f.ports {
-		nums[i] = strconv.FormatUint(uint64(p), 10)
-	}
-
-	return strings.Join(nums, ",")
-}
-
-// ownerArgs returns the arguments of the match that limits the inspected
-// packets to the processes of the configured users.
-func (f *Filter) ownerArgs() (args []string) {
-	if len(f.uids) == 0 {
-		return nil
-	}
-
-	args = []string{"-m", "owner"}
-	for _, uids := range f.uids {
-		args = append(args, "--uid-owner", uids)
-	}
-
-	return args
-}
-
-// removeRules removes the netfilter rules of the filter.
-func (f *Filter) removeRules(ctx context.Context) {
-	f.rulesMu.Lock()
-	defer f.rulesMu.Unlock()
-
-	for _, cmd := range []string{f.iptables, f.ip6tables} {
-		if cmd == "" {
-			continue
-		}
-
-		// Ignore the errors, since the rules could be already removed by a
-		// network manager or a module.
-		_ = f.runCmd(ctx, cmd, "-D", outputChain, "-j", chainName)
-		_ = f.runCmd(ctx, cmd, "-F", chainName)
-		_ = f.runCmd(ctx, cmd, "-X", chainName)
-	}
-
-	f.iptables, f.ip6tables = "", ""
-}
-
-// runCmd runs the netfilter command and returns an error with its output.
-func (f *Filter) runCmd(ctx context.Context, cmd string, args ...string) (err error) {
-	args = append([]string{"-w", "2", "-t", filterTable}, args...)
-	out, err := exec.CommandContext(ctx, cmd, args...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf(
-			"%s %s: %w: %s",
-			cmd,
-			strings.Join(args, " "),
-			err,
-			bytes.TrimSpace(out),
-		)
-	}
-
-	return nil
-}
-
-// watchRules checks that the rules are still installed and restores them if
-// they are gone.
-func (f *Filter) watchRules(ctx context.Context) {
+// watchFlows removes the state of the connections that are not active anymore.
+func (f *Filter) watchFlows(ctx context.Context) {
 	defer f.wg.Done()
 
-	ticker := time.NewTicker(rulesCheckInterval)
+	ticker := time.NewTicker(flowsCheckInterval)
 	defer ticker.Stop()
 
 	for {
@@ -328,32 +104,7 @@ func (f *Filter) watchRules(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			f.checkRules(ctx)
 			f.expireFlows()
-		}
-	}
-}
-
-// checkRules restores the rules of the filter if they are gone.
-func (f *Filter) checkRules(ctx context.Context) {
-	f.rulesMu.Lock()
-	defer f.rulesMu.Unlock()
-
-	for _, cmd := range []string{f.iptables, f.ip6tables} {
-		if cmd == "" {
-			continue
-		}
-
-		err := f.runCmd(ctx, cmd, "-C", outputChain, "-j", chainName)
-		if err == nil {
-			continue
-		}
-
-		f.logger.InfoContext(ctx, "restoring the netfilter rules", "cmd", cmd)
-
-		err = f.setupChainRules(ctx, cmd)
-		if err != nil {
-			f.logger.ErrorContext(ctx, "restoring the netfilter rules", slogutil.KeyError, err)
 		}
 	}
 }

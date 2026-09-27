@@ -91,24 +91,11 @@ type Params struct {
 	// make the clients fall back to TCP.  The server names in QUIC are
 	// encrypted, so the SNI filter cannot inspect it.
 	DropQUIC bool `yaml:"drop_quic"`
-
-	// ManageRules defines whether AdGuard Home installs and removes the
-	// netfilter rules itself.  When it's false, only the queue is opened, and
-	// the rules are expected to be installed by the operator, for example by
-	// a Magisk module script.  In that case Ports, UIDs, and DropQUIC are
-	// unused.
-	ManageRules bool `yaml:"manage_rules"`
 }
 
 // Validate returns an error if p isn't valid.
 func (p *Params) Validate() (err error) {
 	if !p.Enabled {
-		return nil
-	}
-
-	if !p.ManageRules {
-		// The ports, the UIDs, and the QUIC setting are only used to build
-		// the rules, which are managed externally in this case.
 		return nil
 	}
 
@@ -206,10 +193,6 @@ type Filter struct {
 	queueNum uint16
 	dropQUIC bool
 
-	// manageRules is true if the filter installs and removes its netfilter
-	// rules itself.
-	manageRules bool
-
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	mu     sync.Mutex
@@ -248,22 +231,21 @@ func New(c *Config) (f *Filter, err error) {
 	}
 
 	f = &Filter{
-		logger:      c.Logger,
-		filter:      c.Filter,
-		flows:       map[flowKey]*flow{},
-		queryLog:    c.QueryLog,
-		ports:       slices.Clone(c.Ports),
-		uids:        slices.Clone(c.UIDs),
-		queueNum:    c.QueueNum,
-		dropQUIC:    c.DropQUIC,
-		manageRules: c.ManageRules,
+		logger:   c.Logger,
+		filter:   c.Filter,
+		flows:    map[flowKey]*flow{},
+		queryLog: c.QueryLog,
+		ports:    slices.Clone(c.Ports),
+		uids:     slices.Clone(c.UIDs),
+		queueNum: c.QueueNum,
+		dropQUIC: c.DropQUIC,
 	}
 
 	return f, nil
 }
 
-// Start installs the netfilter rules and starts inspecting the connections.
-// It returns an error if the platform support is unavailable.
+// Start starts inspecting the connections.  It returns an error if the
+// platform support is unavailable.
 func (f *Filter) Start(ctx context.Context) (err error) {
 	// The filter outlives the caller of Start, which may be an HTTP request
 	// handler, so its context must not be canceled along with the request.
@@ -286,13 +268,12 @@ func (f *Filter) Start(ctx context.Context) (err error) {
 		"queue_num", f.queueNum,
 		"uid_ranges", f.uids,
 		"drop_quic", f.dropQUIC,
-		"manage_rules", f.manageRules,
 	)
 
 	return nil
 }
 
-// Shutdown removes the netfilter rules and stops inspecting the connections.
+// Shutdown stops inspecting the connections.
 func (f *Filter) Shutdown(ctx context.Context) {
 	f.mu.Lock()
 	cancel := f.cancel

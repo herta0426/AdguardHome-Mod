@@ -223,11 +223,13 @@ sni_filter:
   # HTTP/3 走 UDP 443，SNI 是加密的，拦不住。打开这一项会 REJECT 掉 UDP 443，
   # 逼客户端回退到 TCP，代价是没有 HTTP/3。
   drop_quic: false
-  # 是否由 AdGuardHome 自己安装、维护、清理上面这些 netfilter 规则（默认 true）。
-  # 设成 false 时它只开 NFQUEUE、读包、发 RST，规则交给外部脚本装——例如 Magisk
-  # 模块的 iptables.sh（那种情况下 ports / uids / drop_quic 由脚本说了算，这里不生效）。
-  # 外部脚本必须带 --queue-bypass，否则 AdGuardHome 没跑时 443 会卡住。
-  manage_rules: true
+  # AdGuardHome 不碰 iptables：它只开 NFQUEUE、读包、发 RST，把包送进队列的规则
+  # 由外部脚本安装、清理——例如 Magisk 模块的 iptables.sh（端口在模块自己的
+  # config.prop 里，队列号从这里读）。外部脚本必须带 --queue-bypass，否则
+  # AdGuardHome 没跑时 443 会卡住。
+  #
+  # 上面三项（ports / uids / drop_quic）只是对规则应有的样子做描述，AdGuardHome
+  # 自己不再据此安装规则，保留它们是为了兼容旧配置。
 
 # 客户端的持久化配置。Mod 删掉了「客户端设置」界面，但这一段与 /control/clients
 # 接口还保留着（第三方管理器要读）；官方版本写的 safe_search / blocked_services /

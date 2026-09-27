@@ -88,7 +88,7 @@ var reasonNames = []string{
 	RewrittenAutoHosts: "RewriteEtcHosts",
 	RewrittenRule:      "RewriteRule",
 
-	FilteredSNI: "FilteredSNI",
+	FilteredSNI:    "FilteredSNI",
 	NotFilteredSNI: "NotFilteredSNI",
 }
 

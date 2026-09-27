@@ -83,7 +83,7 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 
 **机制。**
 
-1. 在 `filter` 表的 `OUTPUT` 链上挂自己的链 `AGH_SNI`：链首放行 loopback，然后 `-p tcp -m multiport --dports <ports> -m connbytes --connbytes 0:20000 --connbytes-dir original --connbytes-mode bytes -j NFQUEUE --queue-num <n> --queue-bypass`。`connbytes` 让每条连接只有开头 20 KB 进用户态，其余由内核直通；`--queue-bypass` 保证没人读队列时包照常走（AdGuardHome 挂了只是不拦广告，不会断网）。
+1. 外部的 netfilter 规则把包送进队列（**AdGuardHome 不碰 iptables**，规则由模块脚本维护）：`filter` 表的 `OUTPUT` 链上挂一条 `AGH_SNI` 链，链首放行 loopback，然后**每个端口一条** `-p tcp --dport <port> -m connbytes --connbytes 0:20000 --connbytes-dir original --connbytes-mode bytes -j NFQUEUE --queue-num <n> --queue-bypass`。`connbytes` 让每条连接只有开头 20 KB 进用户态，其余由内核直通；`--queue-bypass` 保证没人读队列时包照常走（AdGuardHome 挂了只是不拦广告，不会断网）。**不要用 `-m multiport --dports` 合成一条**：不少安卓内核没编 `xt_multiport`，那时整条链都装不上，队列没开、包全被 `--queue-bypass` 放行——表现就是「完全没生效」。逐端口循环只用到 `tcp` 内建匹配，不依赖 `xt_multiport`。
 2. 用户态按连接拼 TCP 载荷，用 `internal/snifilter/clienthello.go` 解析出 SNI（处理跨 TLS record、跨 TCP 段），再把 SNI 和判决结果写进查询日志，见下面「SNI 走查询日志」一条。
 3. 拿 SNI 问 AGH 自己的规则引擎：`filtering.DNSFilter.CheckHostRules(host, dns.TypeA, setts)`；命中就把这条连接记成「拦截」。
 4. 命中时返回 `NF_DROP`，同时用 `AF_INET/AF_INET6 + IPPROTO_RAW` 裸套接字注入两个 TCP RST：一个以「服务器」身份发给客户端（客户端立刻拿到 `ECONNRESET`，不是干等超时），一个以「客户端」身份发给服务器（顺手收掉服务端的半开连接）。之后这条连接的包继续 DROP。
@@ -107,7 +107,7 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 | --- | --- |
 | `internal/snifilter/snifilter.go` | 配置校验、连接表、判决（平台无关） |
 | `internal/snifilter/clienthello.go` | ClientHello / SNI 解析 |
-| `internal/snifilter/firewall_linux.go` | iptables/ip6tables 规则、NFQUEUE 消费、RST 注入、规则自愈 |
+| `internal/snifilter/firewall_linux.go` | NFQUEUE 消费、RST 注入、rp_filter 检查（不安装规则） |
 | `internal/snifilter/firewall_others.go` | 非 Linux 的平台桩 |
 | `internal/home/{config.go,dns.go,home.go}` | `sni_filter` 配置段与生命周期（`initDNS` 启动、`Apply` 同步、`stopDNSServer`/`closeDNSServer` 关闭） |
 | `internal/dnsforward/msg.go`、`internal/dnsforward/dnsforward.go` | 强力模式的 NODATA 响应与模式校验 |
@@ -118,22 +118,21 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 ```yaml
 sni_filter:
   enabled: false
-  queue_num: 7          # 别用 0
-  ports: [443, 8443]
-  uids: []              # 例如 ["10000-19999"]，空表示所有进程
-  drop_quic: false      # 打开则 REJECT UDP 443，逼 HTTP/3 回退 TCP
-  manage_rules: true    # false = 规则交给外部脚本装（见下）
+  queue_num: 7          # 别用 0；脚本也从这里读队列号
+  ports: [443, 8443]    # 只描述规则，AdGuardHome 自己不装规则
+  uids: []              # 同上；例如 ["10000-19999"]，空表示所有进程
+  drop_quic: false      # 同上；打开则由脚本 REJECT UDP 443，逼 HTTP/3 回退 TCP
 ```
 
 `filtering.blocking_mode: strong` 时上面这一段自动生效，不需要把 `enabled` 打开。
 
-**规则可以搬给外部脚本**（`manage_rules: false`）：AdGuardHome 只开 NFQUEUE、读包、发 RST，不再安装/清理/自愈 iptables 规则。Magisk 模块走的就是这条：`scripts/iptables.sh` 维护 `filter` 表里的 `AGH_SNI` 链（`-o lo -j RETURN` + `-p tcp --dports … -m owner --uid-owner … -m connbytes … -j NFQUEUE --queue-num N --queue-bypass`，v4/v6 各一份），5 秒守护循环里用 `-C` 检查、缺了就重建；队列号从 `AdGuardHome.yaml` 的 `sni_filter.queue_num` 读，避免两边写死不同值。这种模式下 `ports`/`uids`/`drop_quic` 由脚本说了算，配置里那三项不生效。
+**规则由外部脚本维护**：AdGuardHome 只开 NFQUEUE、读包、发 RST，从不安装/清理/自愈 iptables 规则（早先为同时支持两种模式加过 `manage_rules` 开关，现已删除——内核没有 `xt_multiport` 时它自己装规则会失败，把规则完全交给脚本就没有这个问题）。Magisk 模块走的就是这条：`scripts/iptables.sh` 的 `rebuild_sni` 维护 `filter` 表里的 `AGH_SNI` 链（`-o lo -j RETURN` + 逐端口 `-p tcp --dport N -m owner --uid-owner … -m connbytes … -j NFQUEUE --queue-num N --queue-bypass`，v4/v6 各一份），5 秒守护循环里用 `-C` 检查、缺了就重建；端口来自模块自己的 `scripts/config.prop`（`sni_ports`），队列号从 `AdGuardHome.yaml` 的 `sni_filter.queue_num` 读，避免两边写死不同值。配置里的 `ports`/`uids`/`drop_quic` 现在只是描述性字段，AdGuardHome 不使用，保留是为了兼容旧配置。
 
 外部规则的硬要求：**必须带 `--queue-bypass`**，否则 AdGuardHome 没在跑时进队列的包没人判决，443 会整段卡住；链名建议沿用 `AGH_SNI`（AGH 侧的启动日志和文档都用这个名字）。
 
 **验证怎么做。** 规则里排除了 loopback，所以本机 127.0.0.1 上的测试服务器测不到，必须让流量真的过一张网卡。Linux 上的做法是 network namespace + veth，把 TLS 服务器放进去，客户端从宿主机连 `10.99.0.2:443`：规则里放 `||blocked.test^` 时，`sni=blocked.test` 应立刻收到 RST，`sni=allowed.test` 应正常握手。
 
-2026-09-26 已在 WSL2（内核 6.18，iptables-nft）上跑过：IPv4/IPv6 都被 RST（11 ms / 1.7 ms），放行的连接正常（6 ms），手工 `iptables -D OUTPUT -j AGH_SNI` 后 30 秒内规则自动恢复，SIGTERM 后 v4/v6 的链与跳转都清干净；`drop_quic: true` 时 v4/v6 分别生成 `icmp-port-unreachable` 与 `icmp6-port-unreachable` 的 REJECT 规则。
+2026-09-26 已在 WSL2（内核 6.18，iptables-nft）上跑过：IPv4/IPv6 都被 RST（11 ms / 1.7 ms），放行的连接正常（6 ms）。当时规则还是 AdGuardHome 自己装的，所以那一次还顺带验了「手工 `iptables -D OUTPUT -j AGH_SNI` 后 30 秒内规则自动恢复、SIGTERM 后 v4/v6 的链与跳转都清干净、`drop_quic: true` 生成 `icmp-port-unreachable`/`icmp6-port-unreachable` 的 REJECT 规则」——这些行为随 `manage_rules` 一起去掉了，现在规则与自愈都在模块脚本里。
 
 **已知限制与坑。**
 
