@@ -26,6 +26,7 @@ export const QueryDetailsTooltipContent = (props: Props) => {
     const trackerName = () => props.row.tracker?.name;
     const trackerCategory = () => props.row.tracker?.category;
     const displayDomain = () => props.row.unicodeName || props.row.domain;
+    const protocol = () => getProtocolName(props.row.client_proto, props.row.reason);
 
     return (
         <div class={s.queryDetailsTooltipContent} onClick={(e) => e.stopPropagation()}>
@@ -58,12 +59,22 @@ export const QueryDetailsTooltipContent = (props: Props) => {
                         span: renderValue,
                     })}
                 </div>
-                <div class={s.queryDetailsTooltipItem}>
-                    {intl.getMessage('query_log_detail_protocol', {
-                        value: getProtocolName(props.row.client_proto),
-                        span: renderValue,
-                    })}
-                </div>
+                <Show when={protocol()}>
+                    <div class={s.queryDetailsTooltipItem}>
+                        {intl.getMessage('query_log_detail_protocol', {
+                            value: protocol(),
+                            span: renderValue,
+                        })}
+                    </div>
+                </Show>
+                <Show when={props.row.destination}>
+                    <div class={s.queryDetailsTooltipItem}>
+                        {intl.getMessage('query_log_detail_destination', {
+                            value: props.row.destination,
+                            span: renderValue,
+                        })}
+                    </div>
+                </Show>
             </div>
 
             <Show when={props.row.tracker}>

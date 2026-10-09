@@ -174,12 +174,14 @@ describe('normalizeLogs', () => {
                     type: 'A',
                 },
                 answer: [{ value: '1.2.3.4', type: 'A', ttl: 60 }],
+                destination: '203.0.113.10:443',
                 status: 'processed',
             },
         ]);
         expect(item.domain).toBe('example.com');
         expect(item.unicodeName).toBe('example.com');
         expect(item.type).toBe('A');
+        expect(item.destination).toBe('203.0.113.10:443');
         expect(item.response).toStrictEqual([{ value: '1.2.3.4', type: 'A', ttl: 60 }]);
     });
 });

@@ -9,6 +9,8 @@ import {
     getQueryReasonKey,
     getQueryStatusLabel,
     getQueryStatusKey,
+    getProtocolName,
+    getStatusLabel,
 } from '../components/QueryLog/helpers';
 
 afterEach(() => {
@@ -23,6 +25,11 @@ describe('getQueryStatusKey', () => {
     test('maps allowlisted and plain answers to allowed/processed', () => {
         expect(getQueryStatusKey(FILTERED_STATUS.NOT_FILTERED_WHITE_LIST)).toBe('allowed');
         expect(getQueryStatusKey(FILTERED_STATUS.NOT_FILTERED_NOT_FOUND)).toBe('processed');
+    });
+
+    test('maps SNI entries to blocked/processed statuses', () => {
+        expect(getQueryStatusKey(FILTERED_STATUS.FILTERED_SNI)).toBe('blocked');
+        expect(getQueryStatusKey(FILTERED_STATUS.NOT_FILTERED_SNI)).toBe('processed');
     });
 
     test('falls back to rewritten when the row has an original response', () => {
@@ -59,6 +66,10 @@ describe('getQueryReasonKey', () => {
         );
         expect(getQueryReasonKey(FILTERED_STATUS.NOT_FILTERED_WHITE_LIST, [])).toBe('allowlists');
         expect(getQueryReasonKey(FILTERED_STATUS.REWRITE, [])).toBe('dns_rewrites');
+    });
+
+    test('maps filtered SNI entries to the blocked-by-filter reason', () => {
+        expect(getQueryReasonKey(FILTERED_STATUS.FILTERED_SNI, [])).toBe('blocked_by_filter');
     });
 });
 
@@ -102,6 +113,21 @@ describe('query log label helpers', () => {
         expect(getMessageSpy).toHaveBeenNthCalledWith(5, 'dns_rewrites');
         expect(getMessageSpy).toHaveBeenNthCalledWith(6, 'allowlists');
         expect(getMessageSpy).toHaveBeenNthCalledWith(7, 'error');
+    });
+
+    test('maps SNI entries to their dedicated status labels', () => {
+        const getMessageSpy = vi.spyOn(intl, 'getMessage').mockImplementation((key) => key);
+
+        expect(getStatusLabel(FILTERED_STATUS.FILTERED_SNI, [], false)).toBe('blocked_by_sni');
+        expect(getStatusLabel(FILTERED_STATUS.NOT_FILTERED_SNI, [], false)).toBe('allowed_by_sni');
+
+        expect(getMessageSpy).toHaveBeenNthCalledWith(1, 'blocked_by_sni');
+        expect(getMessageSpy).toHaveBeenNthCalledWith(2, 'allowed_by_sni');
+    });
+
+    test('does not show a DNS protocol for SNI entries', () => {
+        expect(getProtocolName('', FILTERED_STATUS.FILTERED_SNI)).toBe('');
+        expect(getProtocolName('', FILTERED_STATUS.NOT_FILTERED_SNI)).toBe('');
     });
 });
 
@@ -165,5 +191,15 @@ describe('filterLogsByStatus', () => {
         expect(filterLogsByStatus(logs, 'allowed')).toHaveLength(1);
         expect(filterLogsByStatus(logs, 'rewritten')).toHaveLength(1);
         expect(filterLogsByStatus(logs, 'all')).toHaveLength(4);
+    });
+
+    test('filters SNI entries into blocked and processed categories', () => {
+        const sniLogs = [
+            { reason: FILTERED_STATUS.FILTERED_SNI, originalResponse: [] },
+            { reason: FILTERED_STATUS.NOT_FILTERED_SNI, originalResponse: [] },
+        ] as any[];
+
+        expect(filterLogsByStatus(sniLogs, 'blocked')).toEqual([sniLogs[0]]);
+        expect(filterLogsByStatus(sniLogs, 'processed')).toEqual([sniLogs[1]]);
     });
 });

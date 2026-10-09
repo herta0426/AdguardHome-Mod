@@ -77,10 +77,27 @@ describe('queryLogs store', () => {
                     'FilteredBlackList',
                     'FilteredSafeBrowsing',
                     'FilteredParental',
+                    'FilteredSNI',
                 ]),
             }),
         );
         expect(lastCall).not.toHaveProperty('response_status');
+    });
+
+    it('setFilteredLogs includes SNI entries when filtering processed status', async () => {
+        (queryLog as any).mockReset();
+        (queryLog as any).mockResolvedValue({
+            data: [{ reason: 'NotFilteredSNI', question: {} }],
+            oldest: '',
+        });
+
+        await setFilteredLogs({ search: '', status: 'processed', reason: 'all' });
+
+        expect(queryLog).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                reason: expect.arrayContaining(['NotFilteredNotFound', 'NotFilteredSNI']),
+            }),
+        );
     });
 
     it('does not mark the log as complete when additional loading stops', async () => {

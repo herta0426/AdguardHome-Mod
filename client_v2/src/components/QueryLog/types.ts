@@ -49,6 +49,7 @@ export type LogEntry = {
     client_info: ClientInfo | null;
     tracker: TrackerInfo | null;
     upstream: string;
+    destination?: string;
     elapsedMs: string;
     originalResponse: ResponseEntry[];
     status: string;
