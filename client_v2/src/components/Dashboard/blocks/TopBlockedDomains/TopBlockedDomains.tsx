@@ -1,0 +1,176 @@
+import { Show, For, createMemo } from 'solid-js';
+import cn from 'clsx';
+import intl from 'panel/common/intl';
+import { Icon } from 'panel/common/ui/Icon';
+import { Link } from 'panel/common/ui/Link';
+import { RoutePath } from 'panel/components/Routes/Paths';
+import { QUERY_LOG_STATUS_FILTER } from 'panel/helpers/constants';
+import { formatCompactNumber } from 'panel/helpers/helpers';
+import theme from 'panel/lib/theme';
+import { getTrackerData } from 'panel/helpers/trackers/trackers';
+import { TableHeader } from '../TableHeader';
+import { TrackerTooltip } from '../TrackerTooltip';
+import { RowTooltip } from '../RowTooltip';
+import { EmptyState } from '../EmptyState';
+import { CardFooter } from '../CardFooter';
+import { useSortedData } from '../../hooks/useSortedData';
+
+import s from '../TableCard.module.pcss';
+
+type DomainInfo = {
+    name: string;
+    count: number;
+};
+
+type Props = {
+    topBlockedDomains: DomainInfo[];
+    numBlockedFiltering: number;
+    period?: number;
+};
+
+export const TopBlockedDomains = (props: Props) => {
+    const { sortedData: sortedDomains, hasMore } = useSortedData(() => props.topBlockedDomains);
+
+    const hasStats = createMemo(() => props.topBlockedDomains.length > 0);
+
+    return (
+        <div class={cn(s.card, s.cardBlocked)}>
+            <div class={s.cardHeader}>
+                <div class={cn(theme.title.h5, s.cardTitle)}>
+                    {intl.getMessage('top_blocked_domains')}
+                </div>
+
+                <Show when={hasStats()}>
+                    <div class={cn(theme.text.t3, s.cardSubtitle)}>
+                        <Link
+                            to={RoutePath.QueryLog}
+                            query={{ status: QUERY_LOG_STATUS_FILTER.BLOCKED.QUERY }}
+                            class={s.cardSubtitleLink}
+                            data-testid="blocked-total-link"
+                        >
+                            {formatCompactNumber(props.numBlockedFiltering)}
+                        </Link>
+                    </div>
+                </Show>
+            </div>
+
+            <Show when={hasStats()}>
+                <TableHeader
+                    nameLabel={intl.getMessage('domain')}
+                    countLabel={intl.getMessage('blocked_queries')}
+                />
+            </Show>
+
+            <div class={s.tableRows}>
+                <Show when={hasStats()} fallback={<EmptyState />}>
+                    <For each={sortedDomains()}>
+                        {(domain) => {
+                            const percent = createMemo(() =>
+                                props.numBlockedFiltering > 0
+                                    ? (domain.count / props.numBlockedFiltering) * 100
+                                    : 0,
+                            );
+                            const trackerData = getTrackerData(domain.name);
+
+                            return (
+                                <RowTooltip
+                                    content={
+                                        <TrackerTooltip
+                                            domain={domain.name}
+                                            trackerData={trackerData}
+                                        />
+                                    }
+                                >
+                                    <Link
+                                        to={RoutePath.QueryLog}
+                                        query={{ search: `"${domain.name}"` }}
+                                        class={cn(s.tableRow, s.statRowValue, s.tableRowLink)}
+                                        data-testid="top-domain-row"
+                                    >
+                                        <div
+                                            class={cn(
+                                                theme.text.t3,
+                                                theme.text.condenced,
+                                                s.tableRowLeft,
+                                            )}
+                                        >
+                                            <Show
+                                                when={trackerData}
+                                                fallback={<div class={s.tableRowDot} />}
+                                            >
+                                                <Icon icon="eye_open" class={s.tableRowIcon} />
+                                            </Show>
+                                            <span
+                                                class={cn(
+                                                    theme.text.t3,
+                                                    theme.text.condenced,
+                                                    s.domainNameLink,
+                                                )}
+                                            >
+                                                <span class={s.domainName}>{domain.name}</span>
+                                            </span>
+                                        </div>
+
+                                        <div class={s.tableRowRight}>
+                                            <div class={s.dropdownWrapper}>
+                                                <div
+                                                    class={cn(
+                                                        theme.text.t3,
+                                                        theme.text.condenced,
+                                                        s.queryCount,
+                                                    )}
+                                                >
+                                                    <span
+                                                        class={cn(
+                                                            theme.text.t3,
+                                                            theme.text.condenced,
+                                                            s.queryCountLink,
+                                                        )}
+                                                    >
+                                                        {formatCompactNumber(domain.count)}
+                                                    </span>
+
+                                                    <div
+                                                        class={cn(
+                                                            theme.text.t3,
+                                                            theme.text.condenced,
+                                                            s.queryPercent,
+                                                        )}
+                                                    >
+                                                        ({percent().toFixed(2)}%)
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class={s.queryBar}>
+                                                <div
+                                                    class={cn(s.queryBarFill)}
+                                                    style={{ width: `${percent()}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div class={s.queryBar}>
+                                            <div
+                                                class={s.queryBarFill}
+                                                style={{ width: `${percent()}%` }}
+                                            />
+                                        </div>
+                                    </Link>
+                                </RowTooltip>
+                            );
+                        }}
+                    </For>
+                </Show>
+            </div>
+
+            <Show when={hasMore()}>
+                <CardFooter
+                    to={RoutePath.TopBlockedDomains}
+                    testId="show-more-top-blocked-domains"
+                    query={props.period ? { period: props.period } : undefined}
+                />
+            </Show>
+        </div>
+    );
+};

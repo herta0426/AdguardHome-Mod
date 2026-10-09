@@ -1,0 +1,52 @@
+.linkRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    cursor: pointer;
+}
+
+.linkValue {
+    font-weight: var(--weight-semi-bold);
+    color: var(--default-main-text);
+}
+
+.linkArrow {
+    color: var(--default-description-text);
+    flex-shrink: 0;
+}
+
+.clearButton {
+    width: 100%;
+    min-width: 200px;
+    max-width: none;
+
+    @media (min-width: 1024px) {
+        width: auto;
+        max-width: 400px;
+    }
+}
+
+.section {
+    padding-top: 24px;
+}
+
+.actionRow {
+    padding: 8px 16px;
+}
+
+.statsTitle {
+    margin-bottom: 8px;
+}
+
+.title {
+    padding-bottom: 16px;
+}
+
+.sectionTitle {
+    line-height: 32px;
+}
+
+.queryLogSwitch {
+    padding-top: 12px;
+}

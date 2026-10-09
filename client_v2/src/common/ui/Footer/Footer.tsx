@@ -1,0 +1,172 @@
+import { createSignal, createMemo, For, Show } from 'solid-js';
+import cn from 'clsx';
+
+import theme from 'panel/lib/theme';
+import { Dropdown } from 'panel/common/ui/Dropdown';
+import { Icon } from 'panel/common/ui/Icon';
+import intl, { type LocalesType } from 'panel/common/intl';
+
+import { LOCAL_STORAGE_KEYS, LocalStorageHelper } from 'panel/helpers/localStorageHelper';
+import { LanguageDropdown } from '../LanguageDropdown/LanguageDropdown';
+import { REPOSITORY, PRIVACY_POLICY_LINK, THEMES } from 'panel/helpers/constants';
+import { LANGUAGES, LANGUAGE_NAMES } from 'panel/helpers/twosky';
+import { getTheme, setHtmlLangAttr, setUITheme } from 'panel/helpers/helpers';
+import {
+    changeTheme,
+    changeLanguage as changeLanguageAction,
+    getVersion,
+} from 'panel/stores/dashboard';
+import { dashboardState } from 'panel/stores/dashboard';
+
+import s from './styles.module.pcss';
+import { Lang } from 'panel/api/model/lang';
+import { ProfileInfoTheme } from 'panel/api/model/profileInfoTheme';
+
+export const Footer = () => {
+    const currentTheme = () => dashboardState.theme || THEMES.auto;
+    const profileName = () => dashboardState.name || '';
+    const currentLanguage = () => dashboardState.language || intl.getUILanguage();
+    const isLoggedIn = () => profileName() !== '';
+
+    const linksData = createMemo(() => [
+        { href: PRIVACY_POLICY_LINK, name: intl.getMessage('privacy_policy') },
+        { href: REPOSITORY.ISSUES, name: intl.getMessage('report_an_issue') },
+        { href: REPOSITORY.RELEASE_NOTES, name: intl.getMessage('release_notes') },
+    ]);
+
+    const themeTranslations = createMemo<Record<string, string>>(() => ({
+        auto: intl.getMessage('system_theme'),
+        dark: intl.getMessage('dark_theme'),
+        light: intl.getMessage('light_theme'),
+    }));
+
+    const [currentThemeLocal, setCurrentThemeLocal] = createSignal(getTheme());
+    const [themeDropdownOpen, setThemeDropdownOpen] = createSignal(false);
+
+    const activeTheme = () => (isLoggedIn() ? currentTheme() : currentThemeLocal());
+    const themeLabel = () => themeTranslations()[activeTheme()];
+
+    const getYear = () => new Date().getFullYear();
+
+    const getThemeIcon = () => {
+        const active = activeTheme();
+        if (active === THEMES.auto) return 'theme_auto';
+        if (active === THEMES.dark) return 'theme_dark';
+        return 'theme_light';
+    };
+
+    const versionLabel = () =>
+        intl.getMessage('version_number', { value: dashboardState.dnsVersion });
+
+    const changeLanguage = async (newLang: Lang) => {
+        await intl.changeLanguage(newLang as LocalesType);
+        setHtmlLangAttr(newLang);
+        LocalStorageHelper.setItem(LOCAL_STORAGE_KEYS.LANGUAGE, newLang);
+        try {
+            await changeLanguageAction(newLang);
+        } catch (error) {
+            console.error('Failed to save language preference:', error);
+        }
+    };
+
+    const onThemeChange = (value: ProfileInfoTheme) => {
+        if (isLoggedIn()) {
+            changeTheme(value);
+        } else {
+            setUITheme(value);
+            setCurrentThemeLocal(value);
+        }
+        setThemeDropdownOpen(false);
+    };
+
+    return (
+        <footer class={s.footer}>
+            <div class={s.container}>
+                <div class={s.leftGroup}>
+                    <div class={s.copyright}>&copy; 2018–{getYear()} AdGuard Home</div>
+
+                    <Show when={dashboardState.dnsVersion}>
+                        <Show
+                            when={dashboardState.checkUpdateFlag}
+                            fallback={<div class={s.version}>{versionLabel()}</div>}
+                        >
+                            <button
+                                type="button"
+                                class={cn(s.version, s.versionButton)}
+                                aria-label={intl.getMessage('check_updates_btn')}
+                                disabled={dashboardState.processingVersion}
+                                data-testid="footer-check-updates"
+                                onClick={() => getVersion(true)}
+                            >
+                                {versionLabel()}
+                                <Icon
+                                    icon={dashboardState.processingVersion ? 'loader' : 'refresh'}
+                                    color="green"
+                                />
+                            </button>
+                        </Show>
+                    </Show>
+
+                    <div class={s.links}>
+                        <For each={linksData()}>
+                            {({ name, href }) => (
+                                <a
+                                    href={href}
+                                    class={cn(theme.link.link, theme.link.hoverDecoration)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    {name}
+                                </a>
+                            )}
+                        </For>
+                    </div>
+                </div>
+
+                <div class={s.dropdownWrapper}>
+                    <Dropdown
+                        open={themeDropdownOpen()}
+                        onOpenChange={setThemeDropdownOpen}
+                        menu={
+                            <div class={theme.dropdown.menu}>
+                                <For each={Object.values(THEMES) as ProfileInfoTheme[]}>
+                                    {(v) => (
+                                        <button
+                                            type="button"
+                                            class={cn(theme.dropdown.item, {
+                                                [theme.dropdown.item_active]: activeTheme() === v,
+                                            })}
+                                            onClick={() => onThemeChange(v)}
+                                        >
+                                            {themeTranslations()[v]}
+                                        </button>
+                                    )}
+                                </For>
+                            </div>
+                        }
+                        class={s.dropdown}
+                        wrapClass={s.dropdownPill}
+                        position="bottomRight"
+                    >
+                        <div class={s.dropdownTrigger}>
+                            <Icon icon={getThemeIcon()} class={s.icon} />
+                            <span>{themeLabel()}</span>
+                        </div>
+                    </Dropdown>
+                </div>
+
+                <div class={s.dropdownWrapper}>
+                    <LanguageDropdown
+                        value={currentLanguage()}
+                        languages={LANGUAGES}
+                        languageNames={LANGUAGE_NAMES}
+                        onChange={(lang: Lang) => changeLanguage(lang)}
+                        class={s.dropdown}
+                        wrapClass={s.dropdownPill}
+                        position="bottomRight"
+                    />
+                </div>
+            </div>
+        </footer>
+    );
+};

@@ -1,0 +1,63 @@
+.trigger {
+    cursor: pointer;
+    color: var(--default-gray-icons);
+}
+
+.dropdown {
+    border-radius: 2px;
+
+    &:focus-visible {
+        outline: 2px solid var(--product-primary-90);
+        outline-offset: 2px;
+    }
+}
+
+.overlay_mobile {
+    --tooltip-overlay-max-width: calc(100vw - 32px);
+
+    @media (min-width: 768px) {
+        --tooltip-overlay-max-width: 280px;
+    }
+}
+
+.overlay_large {
+    --tooltip-overlay-max-width: min(340px, calc(100vw - 32px));
+
+    @media (min-width: 768px) {
+        --tooltip-overlay-max-width: 340px;
+    }
+}
+
+.menu {
+    padding: 16px;
+    background-color: var(--page-background-additional);
+    max-width: calc(100vw - 32px);
+
+    @media (min-width: 768px) {
+        max-width: 280px;
+    }
+
+    &_spacing {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    &_large {
+        @media (min-width: 768px) {
+            max-width: 340px;
+        }
+    }
+
+    a {
+        color: var(--default-link);
+        transition: color var(--t2);
+        text-decoration: underline;
+
+        &:hover,
+        &:focus {
+            color: var(--hovered-link);
+            text-decoration: none;
+        }
+    }
+}

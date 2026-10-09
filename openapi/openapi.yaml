@@ -1299,6 +1299,7 @@
           - 'nxdomain'
           - 'null_ip'
           - 'custom_ip'
+          - 'strong'
         'blocking_ipv4':
           'type': 'string'
         'blocking_ipv6':

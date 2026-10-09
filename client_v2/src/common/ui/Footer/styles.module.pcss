@@ -1,0 +1,147 @@
+.footer {
+    padding: 32px 16px;
+    border-top: 1px solid var(--default-item-divider);
+
+    @media (min-width: 1024px) {
+        padding: 16px 32px;
+    }
+}
+
+.container {
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    width: 100%;
+
+    @media (min-width: 1024px) {
+        flex-direction: row;
+        gap: 24px;
+    }
+
+    @media (min-width: 1200px) {
+        gap: 40px;
+    }
+}
+
+.leftGroup {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 24px;
+    justify-content: center;
+
+    @media (min-width: 1024px) {
+        column-gap: 40px;
+        row-gap: 24px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        margin-right: auto;
+    }
+}
+
+.copyright {
+    order: 1;
+
+    @media (min-width: 1024px) {
+        order: 0;
+    }
+}
+
+.version {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    order: 2;
+
+    @media (min-width: 1024px) {
+        order: 0;
+    }
+}
+
+.versionButton {
+    padding: 8px;
+    border: 0;
+    background: none;
+    border-radius: 8px;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition: var(--t2) background-color;
+
+    &:hover,
+    &:focus {
+        background: var(--hovered-secondary-button);
+    }
+
+    &:active {
+        background: var(--pressed-secondary-button);
+    }
+
+    &:disabled {
+        background: var(--disabled-secondary-button);
+        color: var(--disabled-secondary-button-stroke);
+        cursor: default;
+    }
+}
+
+.links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+
+    @media (min-width: 1024px) {
+        flex-wrap: nowrap;
+        gap: 24px;
+        flex-shrink: 0;
+    }
+
+    @media (min-width: 1200px) {
+        gap: 40px;
+    }
+}
+
+.dropdownWrapper {
+    flex-shrink: 0;
+}
+
+.dropdown {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.dropdownPill {
+    padding: 8px;
+    border-radius: 8px;
+    transition: var(--t2) background-color;
+
+    &:hover,
+    &:focus-within {
+        background: var(--hovered-secondary-button);
+    }
+
+    &:active {
+        background: var(--pressed-secondary-button);
+    }
+}
+
+.dropdownTrigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.icon {
+    color: var(--default-gray-icons);
+}
+
+.langOverlay {
+    max-width: 100%;
+}

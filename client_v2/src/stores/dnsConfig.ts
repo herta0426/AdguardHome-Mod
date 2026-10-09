@@ -1,0 +1,223 @@
+import { createStore, reconcile } from 'solid-js/store';
+import { untrack } from 'solid-js';
+import { dnsInfo, dnsConfig, cacheClear } from 'panel/api/generated';
+import { addErrorToast, addSuccessToast } from './toasts';
+import intl from 'panel/common/intl';
+import { splitByNewLine } from 'panel/helpers/helpers';
+import { DNS_REQUEST_OPTIONS, BLOCKING_MODES } from 'panel/helpers/constants';
+import type { DNSConfig, DNSConfigBlockingMode, DNSConfigUpstreamMode } from 'panel/api/model';
+
+type DnsConfigState = {
+    processingGetConfig: boolean;
+    initialized: boolean;
+    processingSetConfig: boolean;
+    blocking_mode: DNSConfigBlockingMode;
+    ratelimit: number;
+    blocking_ipv4: string;
+    blocking_ipv6: string;
+    blocked_response_ttl: number;
+    upstream_timeout: number;
+    edns_cs_enabled: boolean;
+    disable_ipv6: boolean;
+    dnssec_enabled: boolean;
+    upstream_dns_file: string;
+    upstream_dns: string;
+    fallback_dns: string;
+    bootstrap_dns: string;
+    local_ptr_upstreams: string;
+    ratelimit_whitelist: string;
+    upstream_mode: DNSConfigUpstreamMode;
+    resolve_clients: boolean;
+    use_private_ptr_resolvers: boolean;
+    default_local_ptr_upstreams: string[];
+    ratelimit_subnet_len_ipv4?: number;
+    ratelimit_subnet_len_ipv6?: number;
+    edns_cs_use_custom?: boolean;
+    edns_cs_custom_ip?: string;
+    cache_size?: number;
+    cache_ttl_max?: number;
+    cache_ttl_min?: number;
+    cache_optimistic?: boolean;
+    cache_enabled?: boolean;
+};
+
+export const DEFAULT_BLOCKING_IPV4 = '0.0.0.0';
+export const DEFAULT_BLOCKING_IPV6 = '::';
+
+const initialState: DnsConfigState = {
+    processingGetConfig: true,
+    initialized: false,
+    processingSetConfig: false,
+    blocking_mode: BLOCKING_MODES.default,
+    ratelimit: 20,
+    blocking_ipv4: DEFAULT_BLOCKING_IPV4,
+    blocking_ipv6: DEFAULT_BLOCKING_IPV6,
+    blocked_response_ttl: 10,
+    upstream_timeout: 10,
+    edns_cs_enabled: false,
+    disable_ipv6: false,
+    dnssec_enabled: false,
+    upstream_dns_file: '',
+    upstream_dns: '',
+    fallback_dns: '',
+    bootstrap_dns: '',
+    local_ptr_upstreams: '',
+    ratelimit_whitelist: '',
+    upstream_mode: '',
+    resolve_clients: false,
+    use_private_ptr_resolvers: false,
+    default_local_ptr_upstreams: [],
+};
+
+const [state, setState] = createStore<DnsConfigState>(initialState);
+
+export const getDnsConfig = async () => {
+    setState('processingGetConfig', true);
+    try {
+        const data = await dnsInfo();
+        setState({
+            ...data,
+            blocking_ipv4: data.blocking_ipv4 || DEFAULT_BLOCKING_IPV4,
+            blocking_ipv6: data.blocking_ipv6 || DEFAULT_BLOCKING_IPV6,
+            upstream_mode:
+                data.upstream_mode === '' ? DNS_REQUEST_OPTIONS.LOAD_BALANCING : data.upstream_mode,
+            bootstrap_dns: data.bootstrap_dns?.join('\n') || '',
+            fallback_dns: data.fallback_dns?.join('\n') || '',
+            local_ptr_upstreams: data.local_ptr_upstreams?.join('\n') || '',
+            upstream_dns: data.upstream_dns?.join('\n') || '',
+            ratelimit_whitelist: data.ratelimit_whitelist?.join('\n') || '',
+            processingGetConfig: false,
+            initialized: true,
+        });
+    } catch (error) {
+        addErrorToast({ error });
+        setState({ processingGetConfig: false, initialized: true });
+    }
+};
+
+export const clearDnsCache = async () => {
+    try {
+        await cacheClear();
+    } catch (error) {
+        addErrorToast({ error });
+    }
+};
+
+/**
+ * Saves a switch's new value unless another save is already in flight, since
+ * the two would race for the shared `processingSetConfig` flag.  The switch
+ * itself stays enabled: a click during a save is dropped rather than dimming
+ * every row on the page.
+ */
+const saveToggle = (values: () => Partial<DnsConfigState>) => {
+    if (state.processingSetConfig) {
+        return Promise.resolve();
+    }
+
+    return setDnsConfig(values(), { silent: true });
+};
+
+/**
+ * Toggles `use_private_ptr_resolvers`.  Called from the Private Reverse page's
+ * header switch and from the DNS settings page.
+ *
+ * Enabling sends the effective `local_ptr_upstreams` along with the flag.  The
+ * backend validates the request body in isolation, so a bare
+ * `{ use_private_ptr_resolvers: true }` makes it validate the OS-resolver
+ * fallback instead of the configured servers, failing with
+ * `private upstream servers: no upstream specified` whenever that fallback is
+ * unusable — for example, when the OS resolver is AdGuard Home itself.
+ *
+ * The servers are only added when they are known to be non-empty, so an
+ * unloaded state cannot clear the stored list.  Disabling needs no servers
+ * because it triggers no validation at all.
+ */
+export const togglePrivatePtrResolvers = () => {
+    const enable = !state.use_private_ptr_resolvers;
+    const servers = state.local_ptr_upstreams;
+
+    return saveToggle(() =>
+        enable
+            ? {
+                  use_private_ptr_resolvers: true,
+                  ...(servers ? { local_ptr_upstreams: servers } : {}),
+              }
+            : { use_private_ptr_resolvers: false },
+    );
+};
+
+/** Toggles `resolve_clients`. Used by PrivateReverse page switch. */
+export const toggleResolveClients = () =>
+    saveToggle(() => ({ resolve_clients: !state.resolve_clients }));
+
+/** Toggles `dnssec_enabled`. Used by ServerConfig Section 2, Row 7. */
+export const toggleDnssecEnabled = () =>
+    saveToggle(() => ({ dnssec_enabled: !state.dnssec_enabled }));
+
+/** Toggles `disable_ipv6` (inverted in UI). Used by ServerConfig Section 2, Row 8. */
+export const toggleDisableIPv6 = () => saveToggle(() => ({ disable_ipv6: !state.disable_ipv6 }));
+
+/** Toggles `cache_enabled`. Used by Cache Section 3 header switch. */
+export const toggleCacheEnabled = () => saveToggle(() => ({ cache_enabled: !state.cache_enabled }));
+
+/** Toggles `cache_optimistic`. Used by Cache Section 3, Row 4. */
+export const toggleOptimisticCaching = () =>
+    saveToggle(() => ({ cache_optimistic: !state.cache_optimistic }));
+
+/** Toggles `edns_cs_enabled`. Used by ServerConfig Section 2, Row 6 switch-link. */
+export const toggleEdnsCsEnabled = () =>
+    saveToggle(() => ({ edns_cs_enabled: !state.edns_cs_enabled }));
+
+/**
+ * Splits a newline-delimited string into an array.
+ * Returns `undefined` when the field wasn't provided (so the backend keeps
+ * the existing value), as opposed to `[]` (which clears it).
+ */
+const splitLines = (value: string | undefined): string[] | undefined =>
+    value !== undefined ? splitByNewLine(value) : undefined;
+
+export const setDnsConfig = async (
+    values: Partial<DnsConfigState>,
+    opts?: { toastMessage?: string; silent?: boolean },
+) => {
+    setState('processingSetConfig', true);
+    try {
+        const {
+            bootstrap_dns,
+            fallback_dns,
+            local_ptr_upstreams,
+            upstream_dns,
+            ratelimit_whitelist,
+            // Strip UI-only fields that are NOT part of DNSConfig
+            processingGetConfig: _processingGetConfig,
+            processingSetConfig: _processingSetConfig,
+            default_local_ptr_upstreams: _defaultLocalPtrUpstreams,
+            ...rest
+        } = values;
+
+        const config: DNSConfig = {
+            ...rest,
+            bootstrap_dns: splitLines(bootstrap_dns),
+            fallback_dns: splitLines(fallback_dns),
+            local_ptr_upstreams: splitLines(local_ptr_upstreams),
+            upstream_dns: splitLines(upstream_dns),
+            ratelimit_whitelist: splitLines(ratelimit_whitelist),
+        };
+
+        await dnsConfig(config);
+        setState(reconcile({ ...untrack(() => state), ...values, processingSetConfig: false }));
+
+        if (opts?.silent) {
+            // Toggle switches — no toast needed
+        } else if (opts?.toastMessage) {
+            addSuccessToast(opts.toastMessage);
+        } else {
+            addSuccessToast(intl.getMessage('settings_notify_changes_saved'));
+        }
+    } catch (error) {
+        addErrorToast({ error });
+        setState('processingSetConfig', false);
+    }
+};
+
+export const dnsConfigState = untrack(() => state);

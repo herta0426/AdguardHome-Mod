@@ -1,0 +1,151 @@
+.statsCards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 24px;
+    padding: 0 16px;
+    margin-bottom: 32px;
+
+    @media (min-width: 1024px) {
+        grid-template-columns: repeat(4, 1fr);
+        padding: 0;
+    }
+}
+
+.statCard {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.statCardAds {
+    & .statCardPercent,
+    & .statCardLabel {
+        color: var(--default-error-link);
+    }
+}
+
+.statCardThreats {
+    & .statCardPercent,
+    & .statCardLabel {
+        color: var(--default-attention-link);
+    }
+}
+
+.statCardAdult {
+    & .statCardPercent,
+    & .statCardLabel {
+        color: var(--default-additional-link);
+    }
+}
+
+.statCardInner {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    border-radius: 8px;
+    border: 1px solid var(--default-item-divider);
+}
+
+.statCardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 8px 8px 0;
+
+    @media (min-width: 768px) {
+        padding: 16px 16px 0;
+    }
+
+    & .statCardLabel {
+        display: block;
+        width: 100%;
+
+        @media (min-width: 768px) {
+            display: none;
+        }
+    }
+}
+
+.statCardHeaderLeft {
+    display: flex;
+    flex-direction: column;
+}
+
+.statCardLabel {
+    display: none;
+
+    @media (min-width: 768px) {
+        display: block;
+    }
+}
+
+.statLink {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover,
+    &:focus {
+        color: inherit;
+        text-decoration: underline;
+    }
+}
+
+.statCardValue {
+    font-size: 16px;
+    color: var(--default-main-text);
+    font-weight: var(--weight-bold);
+
+    @media (min-width: 768px) {
+        font-size: 28px;
+        font-weight: var(--weight-regular);
+    }
+}
+
+.statCardChartWrapper {
+    position: relative;
+    margin-top: auto;
+}
+
+.statCardChart {
+    min-height: 16px;
+    height: 60px;
+    padding: 0;
+    overflow: hidden;
+
+    @media (min-width: 768px) {
+        padding: 0 8px;
+    }
+
+    canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+}
+
+.chartTooltip {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0;
+    min-width: 74px;
+    background: var(--default-cards-background);
+    border: 1px solid var(--default-item-divider);
+    font-size: 10px;
+    white-space: nowrap;
+    border-radius: 4px;
+    padding: 4px 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.chartTooltipValue {
+    font-weight: var(--weight-semi-bold);
+    color: var(--default-main-text);
+}
+
+.chartTooltipDate {
+    color: var(--default-description-text);
+    margin-top: 2px;
+}

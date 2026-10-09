@@ -1,0 +1,114 @@
+import { createStore } from 'solid-js/store';
+import { untrack } from 'solid-js';
+import {
+    blockedServicesSchedule,
+    blockedServicesAll,
+    blockedServicesScheduleUpdate,
+} from 'panel/api/generated';
+import { addErrorToast, addSuccessToast, createUndoToast } from './toasts';
+import intl from 'panel/common/intl';
+import type { BlockedServicesSchedule } from 'panel/api/model/blockedServicesSchedule';
+import type { BlockedService } from 'panel/api/model/blockedService';
+import type { ServiceGroup } from 'panel/api/model/serviceGroup';
+
+type ServicesState = {
+    processing: boolean;
+    /** Whether the blocked-services schedule request has settled at least once. */
+    initialized: boolean;
+    processingAll: boolean;
+    /** Whether the all-blocked-services request has settled at least once. */
+    allInitialized: boolean;
+    processingSet: boolean;
+    list: BlockedServicesSchedule;
+    allServices: BlockedService[];
+    allGroups: ServiceGroup[];
+};
+
+const initialState: ServicesState = {
+    processing: true,
+    initialized: false,
+    processingAll: true,
+    allInitialized: false,
+    processingSet: false,
+    list: {},
+    allServices: [],
+    allGroups: [],
+};
+
+const [state, setState] = createStore<ServicesState>(initialState);
+
+export const getBlockedServices = async () => {
+    setState('processing', true);
+    try {
+        const data = await blockedServicesSchedule();
+        setState({ list: data, processing: false, initialized: true });
+    } catch {
+        // The mod removes the blocked-services backend along with its endpoints,
+        // so this request is expected to fail.  Settle the state quietly
+        // instead of nagging the user with an error toast on every page load.
+        setState({ processing: false, initialized: true });
+    }
+};
+
+export const getAllBlockedServices = async () => {
+    setState('processingAll', true);
+    try {
+        const data = await blockedServicesAll();
+        setState({
+            allServices: data.blocked_services || [],
+            allGroups: data.groups || [],
+            processingAll: false,
+            allInitialized: true,
+        });
+    } catch {
+        setState({ processingAll: false, allInitialized: true });
+    }
+};
+
+export const updateBlockedServices = async (
+    values: BlockedServicesSchedule,
+): Promise<boolean> => {
+    setState('processingSet', true);
+    try {
+        await blockedServicesScheduleUpdate(values);
+        setState('processingSet', false);
+        await getBlockedServices();
+        return true;
+    } catch (error) {
+        addErrorToast({ error });
+        setState('processingSet', false);
+        return false;
+    }
+};
+
+export const allowBlockedService = async (serviceId: string): Promise<boolean> => {
+    let list = untrack(() => state.list);
+    if (!Array.isArray(list?.ids)) {
+        await getBlockedServices();
+        list = untrack(() => state.list);
+    }
+    const currentIds = Array.isArray(list?.ids) ? list.ids : [];
+    if (!currentIds.includes(serviceId)) return true;
+    const serviceName =
+        state.allServices.find((s) => s.id === serviceId)?.name || serviceId;
+    const didUpdate = await updateBlockedServices({
+        ids: currentIds.filter((id: string) => id !== serviceId),
+        schedule: list?.schedule,
+    });
+    if (!didUpdate) return false;
+    addSuccessToast(
+        createUndoToast(
+            intl.getMessage('user_rules_service_allowed', { value: serviceName }),
+            intl.getMessage('notify_undo'),
+            async () => {
+                await updateBlockedServices({
+                    ids: [...currentIds, serviceId],
+                    schedule: list?.schedule,
+                });
+            },
+        ),
+    );
+    return true;
+};
+
+export const servicesState = untrack(() => state);

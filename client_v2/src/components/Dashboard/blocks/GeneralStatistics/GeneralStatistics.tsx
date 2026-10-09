@@ -1,0 +1,77 @@
+import { Show } from 'solid-js';
+
+import intl from 'panel/common/intl';
+import theme from 'panel/lib/theme';
+import cn from 'clsx';
+import { EmptyState } from '../EmptyState';
+
+import s from './GeneralStatistics.module.pcss';
+import { StatRow } from '../StatRow';
+import { RoutePath } from 'panel/components/Routes/Paths';
+import { QUERY_LOG_REASON_FILTER, QUERY_LOG_STATUS_FILTER } from 'panel/helpers/constants';
+
+type Props = {
+    numDnsQueries: number;
+    numBlockedFiltering: number;
+    avgProcessingTime: number;
+};
+
+export const GeneralStatistics = (props: Props) => {
+    const blockedPercent = () =>
+        props.numDnsQueries > 0 ? (props.numBlockedFiltering / props.numDnsQueries) * 100 : 0;
+
+    const hasStats = () => props.numDnsQueries > 0;
+
+    return (
+        <div class={s.card}>
+            <div class={s.cardHeader}>
+                <div class={cn(theme.title.h5, s.cardTitle)}>
+                    {intl.getMessage('general_statistics')}
+                </div>
+            </div>
+
+            <Show when={hasStats()} fallback={<EmptyState />}>
+                <div class={s.tableRows}>
+                    <StatRow
+                        label={intl.getMessage('dns_queries')}
+                        value={props.numDnsQueries}
+                        icon="connections"
+                        rowTheme="dnsQueries"
+                        tooltip={intl.getMessage('dns_queries_tooltip')}
+                        isTotal
+                        linkTo={RoutePath.QueryLog}
+                    />
+
+                    <StatRow
+                        label={intl.getMessage('ads_blocked')}
+                        value={props.numBlockedFiltering}
+                        percent={blockedPercent()}
+                        icon="adblocking"
+                        rowTheme="adsBlocked"
+                        tooltip={intl.getMessage('ads_blocked_tooltip')}
+                        linkTo={RoutePath.QueryLog}
+                        query={{
+                            status: QUERY_LOG_STATUS_FILTER.BLOCKED.QUERY,
+                            reason: QUERY_LOG_REASON_FILTER.BLOCKED_BY_FILTER.QUERY,
+                        }}
+                    />
+
+                    <div class={s.rowDivider} />
+
+                    <div class={s.processingTimeRow}>
+                        <StatRow
+                            label={intl.getMessage('average_time_processing')}
+                            value={intl.getMessage('processing_time_ms', {
+                                value: (props.avgProcessingTime ?? 0).toFixed(0),
+                            })}
+                            isQueriesValue={false}
+                            icon="recent"
+                            rowTheme="averageProcessingTime"
+                            tooltip={intl.getMessage('average_time_processing_tooltip')}
+                        />
+                    </div>
+                </div>
+            </Show>
+        </div>
+    );
+};

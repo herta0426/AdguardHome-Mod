@@ -1,0 +1,118 @@
+.dropdown {
+    cursor: pointer;
+}
+
+.menu {
+    font-size: 14px;
+    line-height: 21px;
+    font-weight: var(--weight-regular);
+    color: var(--default-main-text);
+    border-radius: 8px;
+    box-shadow: var(--main-box-shadow);
+    background-color: var(--default-dropdown-menu-background);
+    max-width: 281px;
+    cursor: default;
+
+    &_lang {
+        max-height: 420px;
+        max-width: 100%;
+        overflow: auto;
+
+        @media (min-width: 1024px) {
+            column-count: 3;
+            max-height: none;
+            overflow: visible;
+            min-width: 400px;
+        }
+    }
+}
+
+.text {
+    font-size: 14px;
+    line-height: 17px;
+    color: var(--default-main-text);
+    cursor: pointer;
+}
+
+.icon {
+    margin-left: 4px;
+    color: var(--default-gray-icons);
+}
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 186px;
+    min-height: 56px;
+    padding: 16px 12px;
+    font-size: 16px;
+    transition: var(--t2) background-color;
+    background-color: var(--default-dropdown-menu-background);
+    color: var(--default-main-text);
+    text-decoration: none;
+    cursor: pointer;
+    border: 0;
+    outline: 0;
+
+    &:hover,
+    &:focus-visible {
+        background-color: var(--hovered-dropdown-menu-background);
+        outline: 0;
+    }
+
+    &:active {
+        background-color: var(--pressed-dropdown-menu-background);
+    }
+
+    &_primary {
+        color: var(--default-link);
+    }
+
+    &_danger {
+        color: var(--default-danger-button);
+    }
+
+    &_active {
+        font-weight: var(--weight-semi-bold);
+    }
+
+    &_large {
+        padding: 16px;
+    }
+}
+
+.trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--t2) background-color;
+    color: var(--default-gray-icons);
+
+    &:hover,
+    &:focus {
+        background: var(--hovered-secondary-button);
+    }
+
+    &:active {
+        background: var(--pressed-secondary-button);
+    }
+
+    &:disabled {
+        background: var(--disabled-secondary-button);
+        color: var(--disabled-secondary-button-stroke);
+        cursor: default;
+    }
+}
+
+.trigger_offset {
+    position: relative;
+    top: 2px;
+}

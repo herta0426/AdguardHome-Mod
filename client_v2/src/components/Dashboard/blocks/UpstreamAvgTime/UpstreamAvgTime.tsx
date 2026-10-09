@@ -1,0 +1,95 @@
+import { Show, For, createMemo } from 'solid-js';
+import intl from 'panel/common/intl';
+import theme from 'panel/lib/theme';
+import { TruncatedText } from 'panel/common/ui/TruncatedText';
+import { RoutePath } from 'panel/components/Routes/Paths';
+import cn from 'clsx';
+import { TableHeader } from '../TableHeader';
+import { EmptyState } from '../EmptyState';
+import { CardFooter } from '../CardFooter';
+import { useSortedData } from '../../hooks/useSortedData';
+
+import s from '../TableCard.module.pcss';
+
+type UpstreamInfo = {
+    name: string;
+    count: number;
+};
+
+type Props = {
+    topUpstreamsAvgTime: UpstreamInfo[];
+    avgProcessingTime: number;
+    period?: number;
+};
+
+export const UpstreamAvgTime = (props: Props) => {
+    const { sortedData: sortedUpstreams, hasMore } = useSortedData(
+        () => props.topUpstreamsAvgTime,
+    );
+
+    const hasStats = createMemo(() => props.topUpstreamsAvgTime.length > 0);
+
+    return (
+        <div class={s.card}>
+            <div class={s.cardHeader}>
+                <div class={cn(theme.title.h5, s.cardTitle)}>
+                    {intl.getMessage('average_upstream_response_time')}
+                </div>
+
+                <Show when={hasStats()}>
+                    <div class={cn(theme.text.t3, s.cardSubtitle)}>
+                        {(props.avgProcessingTime ?? 0).toFixed(0)}{' '}
+                        {intl.getMessage('milliseconds_abbreviation')}
+                    </div>
+                </Show>
+            </div>
+
+            <Show when={hasStats()}>
+                <TableHeader
+                    nameLabel={intl.getMessage('upstream')}
+                    countLabel={intl.getMessage('response_time')}
+                />
+            </Show>
+
+            <div class={s.tableRows}>
+                <Show when={hasStats()} fallback={<EmptyState />}>
+                    <For each={sortedUpstreams()}>
+                        {(upstream) => (
+                            <div class={cn(s.tableRow)}>
+                                <div
+                                    class={cn(theme.text.t3, theme.text.condenced, s.tableRowLeft)}
+                                >
+                                    <TruncatedText
+                                        text={upstream.name}
+                                        testId="upstream-avg-time-name"
+                                        class={s.domainName}
+                                    />
+                                </div>
+                                <div class={s.tableRowRight}>
+                                    <div
+                                        class={cn(
+                                            theme.text.t3,
+                                            theme.text.condenced,
+                                            s.queryCount,
+                                        )}
+                                    >
+                                        {(upstream.count ?? 0).toFixed(0)}{' '}
+                                        {intl.getMessage('milliseconds_abbreviation')}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </For>
+                </Show>
+            </div>
+
+            <Show when={hasMore()}>
+                <CardFooter
+                    to={RoutePath.UpstreamAvgTime}
+                    testId="show-more-upstream-avg-time"
+                    query={props.period ? { period: props.period } : undefined}
+                />
+            </Show>
+        </div>
+    );
+};

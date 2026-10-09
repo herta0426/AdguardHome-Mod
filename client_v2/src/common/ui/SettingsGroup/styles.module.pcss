@@ -1,0 +1,65 @@
+.switch {
+    width: 100%;
+    padding: 8px 16px;
+    border-radius: 8px;
+}
+
+.switchDisabled .row {
+    cursor: default;
+
+    &:hover,
+    &:focus-within {
+        background-color: transparent;
+    }
+}
+
+.radio {
+    width: 100%;
+}
+
+.row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin: -8px -16px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color var(--t2);
+
+    @media (hover: hover) {
+        &:hover {
+            background-color: var(--page-background-additional);
+        }
+    }
+
+    &:focus-within {
+        background-color: var(--page-background-additional);
+    }
+
+    @media (min-width: 1024px) {
+        gap: 40px;
+    }
+}
+
+.text {
+    padding: 8px 0;
+}
+
+.title {
+    color: var(--default-main-text);
+}
+
+.titleDisabled {
+    color: var(--disabled-main-text);
+}
+
+.desc {
+    color: var(--default-description-text);
+}
+
+.input,
+.content {
+    padding: 8px 0;
+}

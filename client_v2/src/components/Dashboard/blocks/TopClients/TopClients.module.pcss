@@ -1,0 +1,332 @@
+.card {
+    display: flex;
+    flex-direction: column;
+    border-radius: 16px;
+    padding: 8px 0;
+    border: 1px solid var(--default-item-divider);
+    overflow: hidden;
+
+    @media (min-width: 768px) {
+        max-height: 384px;
+        padding: 8px;
+    }
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px 24px;
+
+    @media (min-width: 768px) {
+        padding: 16px 16px 24px;
+    }
+}
+
+.cardSubtitle {
+    white-space: nowrap;
+    color: var(--default-description-text);
+}
+
+.tableRows {
+    height: 100%;
+
+    /* A divider separates two rows, so the last row must not have one.  A
+       tooltip trigger wraps its row and is followed by its overlay, so the
+       row is never the list's last child. */
+    & > *:has(> .clientRow):not(:has(~ * > .clientRow)) > .clientRow {
+        border-bottom: none;
+    }
+}
+
+.tableRowRight {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    @media (min-width: 768px) {
+        grid-column: 2;
+    }
+}
+
+.tableRowIcon {
+    width: 24px;
+    height: 24px;
+    stroke: var(--default-gray-icons);
+    color: var(--default-gray-icons);
+}
+
+.tableRowIconDanger {
+    stroke: var(--default-error-icon);
+    color: var(--default-error-icon);
+}
+
+.tableRowInfo {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    margin: 8px 0 0;
+
+    @media (min-width: 768px) {
+        grid-column: 1;
+        width: auto;
+        min-width: 0;
+        margin: 0;
+        padding-left: 32px;
+    }
+}
+
+.tableRowDot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+
+    &:before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--default-gray-icons);
+    }
+}
+
+.queryCount {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.queryCountLink {
+    color: inherit;
+    text-decoration: none;
+}
+
+.dropdownWrapper {
+    flex-shrink: 0;
+}
+
+.queryPercent {
+    color: var(--default-description-text);
+}
+
+.queryBar {
+    display: none;
+    width: 100%;
+    min-width: 102px;
+    height: 3px;
+    background: var(--default-item-divider);
+    border-radius: 2px;
+
+    @media (min-width: 768px) {
+        display: block;
+    }
+}
+
+.queryBarFill {
+    height: 100%;
+    background: var(--default-tertiary-stat);
+}
+
+.protectionMenu {
+    min-width: 200px;
+}
+
+.clientRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 24px;
+    padding: 16px 24px 24px;
+    transition: background-color var(--t2);
+    border-bottom: 1px solid var(--default-item-divider);
+    border-radius: 4px;
+
+    @media (min-width: 768px) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        padding: 8px 16px;
+        border: none;
+    }
+
+    @media (hover: hover) {
+        &:hover,
+        &:focus {
+            background-color: var(--hovered-page-background);
+        }
+    }
+}
+
+.clientInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.clientIp {
+    font-size: 14px;
+    color: var(--default-main-text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.clientIpText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.clientRowLink {
+    cursor: pointer;
+    color: inherit;
+    text-decoration: none;
+
+    &:hover,
+    &:focus,
+    &:active {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--product-primary-90);
+        outline-offset: -2px;
+    }
+}
+
+.clientName {
+    color: var(--default-description-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.clientActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.actionButton {
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--default-description-text);
+    border-radius: 4px;
+    transition: background-color 0.2s;
+
+    &:hover,
+    &:focus {
+        background-color: var(--hovered-secondary-button);
+    }
+}
+
+.clientActionsDropdown {
+    display: none;
+
+    @media (min-width: 768px) {
+        display: block;
+    }
+}
+
+.tableRowQueriesInfo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 16px 0 0;
+
+    @media (min-width: 768px) {
+        display: none;
+    }
+
+    & .queryBar {
+        display: block;
+        flex: 3;
+    }
+
+    & .queryPercent {
+        font-size: 14px;
+    }
+
+    & .queryCount {
+        flex: 1;
+    }
+}
+
+.tableRowActions {
+    margin: 16px 0 0;
+
+    @media (min-width: 768px) {
+        display: none;
+    }
+
+    & .protectionMenu {
+        padding: 0;
+    }
+
+    & .tableRowMenuItem {
+        justify-content: center;
+        height: 40px;
+        min-height: 40px;
+        padding: 0 24px;
+        border-radius: 8px;
+        font-weight: var(--weight-medium);
+        background-color: transparent;
+        transition:
+            var(--t2) color,
+            var(--t2) border-color;
+    }
+
+    & .tableRowMenuItemRed {
+        border: 1px solid var(--default-danger-button);
+        color: var(--default-danger-button);
+
+        &:hover,
+        &:focus-visible {
+            background-color: transparent;
+            color: var(--hovered-danger-button);
+            border-color: var(--hovered-danger-button);
+        }
+
+        &:active {
+            background-color: transparent;
+            color: var(--pressed-danger-button);
+            border-color: var(--pressed-danger-button);
+        }
+    }
+
+    & .tableRowMenuItemGreen {
+        border: 1px solid var(--default-link);
+        color: var(--default-link);
+
+        &:hover,
+        &:focus-visible {
+            background-color: transparent;
+            color: var(--hovered-link);
+            border-color: var(--hovered-link);
+        }
+
+        &:active {
+            background-color: transparent;
+            color: var(--pressed-link);
+            border-color: var(--pressed-link);
+        }
+    }
+}
+
+.queryTooltipWrap {
+    display: none;
+
+    @media (min-width: 768px) {
+        display: block;
+    }
+}
