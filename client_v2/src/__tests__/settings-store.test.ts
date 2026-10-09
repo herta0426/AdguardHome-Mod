@@ -10,8 +10,6 @@ const { mocks, capturedUndo } = vi.hoisted(() => {
         parentalStatus: vi.fn(),
         parentalEnable: vi.fn(),
         parentalDisable: vi.fn(),
-        safesearchStatus: vi.fn(),
-        safesearchSettings: vi.fn(),
         testUpstreamDNS: vi.fn(),
         addSuccessToast: vi.fn(),
         addErrorToast: vi.fn(),
@@ -33,8 +31,6 @@ vi.mock('panel/api/generated', () => ({
     parentalStatus: mocks.parentalStatus,
     parentalEnable: mocks.parentalEnable,
     parentalDisable: mocks.parentalDisable,
-    safesearchStatus: mocks.safesearchStatus,
-    safesearchSettings: mocks.safesearchSettings,
     testUpstreamDNS: mocks.testUpstreamDNS,
 }));
 
@@ -53,7 +49,6 @@ vi.mock('panel/common/intl', () => ({
 import {
     disableParental,
     disableSafeBrowsing,
-    disableSafeSearch,
     initSettings,
     settingsState,
 } from 'panel/stores/settings';
@@ -65,26 +60,16 @@ const triggerUndo = async () => {
     await capturedUndo.current();
 };
 
-const seedSafeSearchConfig = {
-    enabled: true,
-    google: true,
-    bing: false,
-    youtube: true,
-};
-
 beforeEach(async () => {
     vi.clearAllMocks();
     capturedUndo.current = undefined;
 
     mocks.safebrowsingStatus.mockResolvedValue({ enabled: true });
     mocks.parentalStatus.mockResolvedValue({ enabled: true });
-    mocks.safesearchStatus.mockResolvedValue(seedSafeSearchConfig);
     mocks.safebrowsingDisable.mockResolvedValue(undefined);
     mocks.safebrowsingEnable.mockResolvedValue(undefined);
     mocks.parentalDisable.mockResolvedValue(undefined);
     mocks.parentalEnable.mockResolvedValue(undefined);
-    mocks.safesearchSettings.mockResolvedValue(undefined);
-
     await initSettings();
 });
 
@@ -155,47 +140,6 @@ describe('disableParental', () => {
         expect(result).toBe(false);
         expect(mocks.addErrorToast).toHaveBeenCalled();
         expect(settingsState.settingsList.parental.enabled).toBe(true);
-    });
-});
-
-describe('disableSafeSearch', () => {
-    it('disables via settings API preserving provider flags', async () => {
-        const result = await disableSafeSearch();
-
-        expect(mocks.safesearchSettings).toHaveBeenCalledWith({
-            ...seedSafeSearchConfig,
-            enabled: false,
-        });
-        expect(settingsState.settingsList.safesearch).toEqual({
-            ...seedSafeSearchConfig,
-            enabled: false,
-        });
-        expect(mocks.createUndoToast).toHaveBeenCalledWith(
-            'user_rules_safe_search_disabled',
-            'notify_undo',
-            expect.any(Function),
-        );
-        expect(mocks.addSuccessToast).toHaveBeenCalled();
-        expect(result).toBe(true);
-    });
-
-    it('undo restores the full config including provider flags', async () => {
-        await disableSafeSearch();
-
-        await triggerUndo();
-
-        expect(mocks.safesearchSettings).toHaveBeenLastCalledWith(seedSafeSearchConfig);
-        expect(settingsState.settingsList.safesearch).toEqual(seedSafeSearchConfig);
-    });
-
-    it('returns false and shows an error toast on failure', async () => {
-        mocks.safesearchSettings.mockRejectedValueOnce(new Error('Network error'));
-
-        const result = await disableSafeSearch();
-
-        expect(result).toBe(false);
-        expect(mocks.addErrorToast).toHaveBeenCalled();
-        expect(settingsState.settingsList.safesearch).toEqual(seedSafeSearchConfig);
     });
 });
 

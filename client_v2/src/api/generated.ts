@@ -2,9 +2,6 @@ import type {
     AccessList,
     AddUrlRequest,
     AddressesInfo,
-    BlockedServicesAll,
-    BlockedServicesArray,
-    BlockedServicesSchedule,
     CheckConfigRequest,
     CheckConfigResponse,
     Client,
@@ -14,13 +11,7 @@ import type {
     ClientsFindParams,
     ClientsFindResponse,
     ClientsSearchRequest,
-    DHCPNetInterfaces,
     DNSConfig,
-    DhcpConfig,
-    DhcpFindActiveReq,
-    DhcpSearchResult,
-    DhcpStaticLeaseBody,
-    DhcpStatus,
     DnsInfo200,
     FilterCheckHostResponse,
     FilterConfig,
@@ -48,7 +39,6 @@ import type {
     RewriteSettings,
     RewriteSettingsBody,
     RewriteUpdateBody,
-    SafeSearchConfig,
     SafebrowsingStatus200,
     ServerStatus,
     SetProtectionRequest,
@@ -488,158 +478,6 @@ export const tlsValidate = async (
     });
 };
 
-export const getDhcpStatusUrl = () => {
-    return `control/dhcp/status`;
-};
-
-/**
- * @summary Gets the current DHCP settings and status
- */
-export const dhcpStatus = async (options?: RequestInit): Promise<DhcpStatus> => {
-    return customFetch<DhcpStatus>(getDhcpStatusUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getDhcpInterfacesUrl = () => {
-    return `control/dhcp/interfaces`;
-};
-
-/**
- * @summary Gets the available interfaces
- */
-export const dhcpInterfaces = async (options?: RequestInit): Promise<DHCPNetInterfaces> => {
-    return customFetch<DHCPNetInterfaces>(getDhcpInterfacesUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getDhcpSetConfigUrl = () => {
-    return `control/dhcp/set_config`;
-};
-
-/**
- * @summary Updates the current DHCP server configuration
- */
-export const dhcpSetConfig = async (
-    dhcpConfig?: DhcpConfig,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getDhcpSetConfigUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(dhcpConfig),
-    });
-};
-
-export const getCheckActiveDhcpUrl = () => {
-    return `control/dhcp/find_active_dhcp`;
-};
-
-/**
- * @summary Searches for an active DHCP server on the network
- */
-export const checkActiveDhcp = async (
-    dhcpFindActiveReq?: DhcpFindActiveReq,
-    options?: RequestInit,
-): Promise<DhcpSearchResult> => {
-    return customFetch<DhcpSearchResult>(getCheckActiveDhcpUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(dhcpFindActiveReq),
-    });
-};
-
-export const getDhcpAddStaticLeaseUrl = () => {
-    return `control/dhcp/add_static_lease`;
-};
-
-/**
- * @summary Adds a static lease
- */
-export const dhcpAddStaticLease = async (
-    dhcpStaticLeaseBody: DhcpStaticLeaseBody,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getDhcpAddStaticLeaseUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(dhcpStaticLeaseBody),
-    });
-};
-
-export const getDhcpRemoveStaticLeaseUrl = () => {
-    return `control/dhcp/remove_static_lease`;
-};
-
-/**
- * @summary Removes a static lease
- */
-export const dhcpRemoveStaticLease = async (
-    dhcpStaticLeaseBody: DhcpStaticLeaseBody,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getDhcpRemoveStaticLeaseUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(dhcpStaticLeaseBody),
-    });
-};
-
-export const getDhcpUpdateStaticLeaseUrl = () => {
-    return `control/dhcp/update_static_lease`;
-};
-
-/**
- * Updates IP address, hostname of the static lease.  IP version must be the same as previous.
- * @summary Updates a static lease
- */
-export const dhcpUpdateStaticLease = async (
-    dhcpStaticLeaseBody: DhcpStaticLeaseBody,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getDhcpUpdateStaticLeaseUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(dhcpStaticLeaseBody),
-    });
-};
-
-export const getDhcpResetUrl = () => {
-    return `control/dhcp/reset`;
-};
-
-/**
- * @summary Reset DHCP configuration
- */
-export const dhcpReset = async (options?: RequestInit): Promise<void> => {
-    return customFetch<void>(getDhcpResetUrl(), {
-        ...options,
-        method: 'POST',
-    });
-};
-
-export const getDhcpResetLeasesUrl = () => {
-    return `control/dhcp/reset_leases`;
-};
-
-/**
- * @summary Reset DHCP leases
- */
-export const dhcpResetLeases = async (options?: RequestInit): Promise<void> => {
-    return customFetch<void>(getDhcpResetLeasesUrl(), {
-        ...options,
-        method: 'POST',
-    });
-};
-
 export const getFilteringStatusUrl = () => {
     return `control/filtering/status`;
 };
@@ -882,69 +720,6 @@ export const parentalStatus = async (options?: RequestInit): Promise<ParentalSta
     });
 };
 
-export const getSafesearchEnableUrl = () => {
-    return `control/safesearch/enable`;
-};
-
-/**
- * @deprecated
- * @summary Enable safesearch
- */
-export const safesearchEnable = async (options?: RequestInit): Promise<void> => {
-    return customFetch<void>(getSafesearchEnableUrl(), {
-        ...options,
-        method: 'POST',
-    });
-};
-
-export const getSafesearchDisableUrl = () => {
-    return `control/safesearch/disable`;
-};
-
-/**
- * @deprecated
- * @summary Disable safesearch
- */
-export const safesearchDisable = async (options?: RequestInit): Promise<void> => {
-    return customFetch<void>(getSafesearchDisableUrl(), {
-        ...options,
-        method: 'POST',
-    });
-};
-
-export const getSafesearchSettingsUrl = () => {
-    return `control/safesearch/settings`;
-};
-
-/**
- * @summary Update safesearch settings
- */
-export const safesearchSettings = async (
-    safeSearchConfig?: SafeSearchConfig,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getSafesearchSettingsUrl(), {
-        ...options,
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(safeSearchConfig),
-    });
-};
-
-export const getSafesearchStatusUrl = () => {
-    return `control/safesearch/status`;
-};
-
-/**
- * @summary Get safesearch status
- */
-export const safesearchStatus = async (options?: RequestInit): Promise<SafeSearchConfig> => {
-    return customFetch<SafeSearchConfig>(getSafesearchStatusUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
 export const getClientsStatusUrl = () => {
     return `control/clients`;
 };
@@ -1092,110 +867,6 @@ export const accessSet = async (accessList: AccessList, options?: RequestInit): 
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         body: JSON.stringify(accessList),
-    });
-};
-
-export const getBlockedServicesAvailableServicesUrl = () => {
-    return `control/blocked_services/services`;
-};
-
-/**
- * Deprecated: Use `GET /blocked_services/all` instead.
- * @deprecated
- * @summary Get available services to use for blocking
- */
-export const blockedServicesAvailableServices = async (
-    options?: RequestInit,
-): Promise<BlockedServicesArray> => {
-    return customFetch<BlockedServicesArray>(getBlockedServicesAvailableServicesUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getBlockedServicesAllUrl = () => {
-    return `control/blocked_services/all`;
-};
-
-/**
- * @summary Get available services to use for blocking
- */
-export const blockedServicesAll = async (options?: RequestInit): Promise<BlockedServicesAll> => {
-    return customFetch<BlockedServicesAll>(getBlockedServicesAllUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getBlockedServicesListUrl = () => {
-    return `control/blocked_services/list`;
-};
-
-/**
- * Deprecated: Use `GET /blocked_services/get` instead.
- * @deprecated
- * @summary Get blocked services list
- */
-export const blockedServicesList = async (options?: RequestInit): Promise<BlockedServicesArray> => {
-    return customFetch<BlockedServicesArray>(getBlockedServicesListUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getBlockedServicesSetUrl = () => {
-    return `control/blocked_services/set`;
-};
-
-/**
- * Deprecated: Use `PUT /blocked_services/update` instead.
- * @deprecated
- * @summary Set blocked services list
- */
-export const blockedServicesSet = async (
-    blockedServicesArray?: BlockedServicesArray,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getBlockedServicesSetUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(blockedServicesArray),
-    });
-};
-
-export const getBlockedServicesScheduleUrl = () => {
-    return `control/blocked_services/get`;
-};
-
-/**
- * @summary Get blocked services
- */
-export const blockedServicesSchedule = async (
-    options?: RequestInit,
-): Promise<BlockedServicesSchedule> => {
-    return customFetch<BlockedServicesSchedule>(getBlockedServicesScheduleUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getBlockedServicesScheduleUpdateUrl = () => {
-    return `control/blocked_services/update`;
-};
-
-/**
- * @summary Update blocked services
- */
-export const blockedServicesScheduleUpdate = async (
-    blockedServicesSchedule: BlockedServicesSchedule,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getBlockedServicesScheduleUpdateUrl(), {
-        ...options,
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(blockedServicesSchedule),
     });
 };
 

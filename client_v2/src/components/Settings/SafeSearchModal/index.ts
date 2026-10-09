@@ -1,1 +1,0 @@
-export { SafeSearchModal } from './SafeSearchModal';

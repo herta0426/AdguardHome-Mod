@@ -1,4 +1,4 @@
-import type { DNSConfigBlockingMode, SafeSearchConfig } from 'panel/api/model';
+import type { DNSConfigBlockingMode } from 'panel/api/model';
 
 export const R_URL_REQUIRES_PROTOCOL = /^https?:\/\/[^/\s]+(\/.*)?$/;
 
@@ -44,15 +44,6 @@ export const HTML_PAGES = {
 };
 
 export const LANGUAGE_QUERY_PARAM = 'lang';
-
-export const STATS_NAMES = {
-    avg_processing_time: 'average_processing_time',
-    blocked_filtering: 'Blocked by filters',
-    dns_queries: 'DNS queries',
-    replaced_parental: 'stats_adult',
-    replaced_safebrowsing: 'stats_malware_phishing',
-    replaced_safesearch: 'enforced_save_search',
-};
 
 export const REPOSITORY = {
     URL: 'https://github.com/AdguardTeam/AdGuardHome',
@@ -172,22 +163,6 @@ export const THEMES = {
     light: 'light',
 };
 
-export type SafeSearchProviderKey = Exclude<keyof SafeSearchConfig, 'enabled'>;
-
-export const SAFE_SEARCH_PROVIDERS: Record<SafeSearchProviderKey, string> = {
-    google: 'Google',
-    youtube: 'YouTube',
-    bing: 'Bing',
-    duckduckgo: 'DuckDuckGo',
-    yandex: 'Yandex',
-    pixabay: 'Pixabay',
-    ecosia: 'Ecosia',
-};
-
-export const SAFE_SEARCH_PROVIDER_KEYS = Object.keys(
-    SAFE_SEARCH_PROVIDERS,
-) as SafeSearchProviderKey[];
-
 export const WHOIS_ICONS = {
     location: 'location',
     orgname: 'network',
@@ -215,11 +190,9 @@ export const FILTERED_STATUS = {
     NOT_FILTERED_NOT_FOUND: 'NotFilteredNotFound',
     NOT_FILTERED_ERROR: 'NotFilteredError',
     FILTERED_INVALID: 'FilteredInvalid',
-    FILTERED_BLOCKED_SERVICE: 'FilteredBlockedService',
     REWRITE: 'Rewrite',
     REWRITE_HOSTS: 'RewriteEtcHosts',
     REWRITE_RULE: 'RewriteRule',
-    FILTERED_SAFE_SEARCH: 'FilteredSafeSearch',
     FILTERED_SAFE_BROWSING: 'FilteredSafeBrowsing',
     FILTERED_PARENTAL: 'FilteredParental',
 };
@@ -264,9 +237,6 @@ export const QUERY_LOG_REASON_FILTER = {
     BLOCKED_BY_FILTER: {
         QUERY: 'FilteredBlackList',
     },
-    BLOCKED_SERVICES: {
-        QUERY: 'FilteredBlockedService',
-    },
     BLOCKED_BY_THREATS: {
         QUERY: 'FilteredSafeBrowsing',
     },
@@ -275,9 +245,6 @@ export const QUERY_LOG_REASON_FILTER = {
     },
     DNS_REWRITES: {
         QUERY: 'Rewrite',
-    },
-    SAFE_SEARCH: {
-        QUERY: 'FilteredSafeSearch',
     },
 } as const;
 
@@ -307,8 +274,6 @@ export const QUERY_STATUS_COLORS = {
 export const FILTERED_STATUS_TO_COLOR_MAP = {
     [FILTERED_STATUS.NOT_FILTERED_WHITE_LIST]: QUERY_STATUS_COLORS.GREEN,
     [FILTERED_STATUS.NOT_FILTERED_NOT_FOUND]: QUERY_STATUS_COLORS.WHITE,
-    [FILTERED_STATUS.FILTERED_BLOCKED_SERVICE]: QUERY_STATUS_COLORS.RED,
-    [FILTERED_STATUS.FILTERED_SAFE_SEARCH]: QUERY_STATUS_COLORS.YELLOW,
     [FILTERED_STATUS.FILTERED_BLACK_LIST]: QUERY_STATUS_COLORS.RED,
     [FILTERED_STATUS.REWRITE]: QUERY_STATUS_COLORS.YELLOW,
     [FILTERED_STATUS.REWRITE_HOSTS]: QUERY_STATUS_COLORS.YELLOW,
@@ -356,10 +321,8 @@ export const DETAILED_DATE_FORMAT_OPTIONS = {
 export const SPECIAL_FILTER_ID = {
     CUSTOM_FILTERING_RULES: 0,
     SYSTEM_HOSTS: -1,
-    BLOCKED_SERVICES: -2,
     PARENTAL: -3,
     SAFE_BROWSING: -4,
-    SAFE_SEARCH: -5,
 };
 
 export const BLOCK_ACTIONS = {

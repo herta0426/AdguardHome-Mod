@@ -34,16 +34,13 @@ const testFilter: Filter = {
 const defaultProps: ComponentProps<typeof DetailModal> = {
     entry: makeEntry(),
     filters: [],
-    services: [],
     whitelistFilters: [],
     onClose: vi.fn(),
     onBlock: vi.fn(),
     onAddToAllowlist: vi.fn(),
-    onAllowService: vi.fn(),
     onDisableFilter: vi.fn(),
     onDisableSafeBrowsing: vi.fn(),
     onDisableParental: vi.fn(),
-    onDisableSafeSearch: vi.fn(),
     onRemoveRewrite: vi.fn(),
     onEditRewrite: vi.fn(),
 };
@@ -101,33 +98,6 @@ describe('DetailModal actions footer', () => {
         fireEvent.click(btn);
         expect(props.onDisableFilter).toHaveBeenCalledWith(testFilter);
         expect(props.onClose).toHaveBeenCalled();
-    });
-
-    it('blocked service → Add to allowlist + Allow service', () => {
-        render(() => (
-            <DetailModal
-                {...defaultProps}
-                entry={makeEntry({
-                    reason: 'FilteredBlockedService',
-                    serviceName: 'amazon',
-                })}
-            />
-        ));
-        expect(
-            screen.getByTestId('query-log-detail-action-allow-service'),
-        ).toBeInTheDocument();
-    });
-
-    it('safe search → Add to allowlist + Disable Safe search', () => {
-        render(() => (
-            <DetailModal
-                {...defaultProps}
-                entry={makeEntry({ reason: 'FilteredSafeSearch' })}
-            />
-        ));
-        expect(
-            screen.getByTestId('query-log-detail-action-disable-safe-search'),
-        ).toBeInTheDocument();
     });
 
     it('error entry → footer is hidden entirely', () => {

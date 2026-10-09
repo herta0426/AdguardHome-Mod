@@ -9,7 +9,6 @@ import { useScrollEdges } from 'panel/hooks/useScrollEdges';
 import {
     captitalizeWords,
     formatElapsedMs,
-    getServiceName,
     type Filter,
 } from 'panel/helpers/helpers';
 import {
@@ -24,7 +23,6 @@ import {
     formatLogDate,
 } from '../../helpers';
 import type { NormalizedQueryLogItem } from 'panel/helpers/helpers';
-import { Service } from '../../types';
 import type { RewriteEntry } from 'panel/api/model/rewriteEntry';
 
 import { ActionFooter } from './blocks';
@@ -33,16 +31,13 @@ import s from './DetailModal.module.pcss';
 type Props = {
     entry: NormalizedQueryLogItem;
     filters: Filter[];
-    services: Service[];
     whitelistFilters: Filter[];
     onClose: () => void;
     onBlock: (domain: string) => void;
     onAddToAllowlist: (domain: string) => void;
-    onAllowService: (serviceId: string) => void;
     onDisableFilter: (filter: Filter) => void;
     onDisableSafeBrowsing: () => void;
     onDisableParental: () => void;
-    onDisableSafeSearch: () => void;
     onRemoveRewrite: (rewrite: RewriteEntry) => void;
     onEditRewrite: (rewrite: RewriteEntry) => void;
 };
@@ -80,8 +75,6 @@ export const DetailModal = (props: Props) => {
             filters: props.filters,
             reason: props.entry.reason,
             rules: props.entry.rules ?? [],
-            serviceName: props.entry.service_name || props.entry.serviceName,
-            services: props.services,
             whitelistFilters: props.whitelistFilters,
         });
     const statusClassName = () => getStatusClassName(props.entry.reason);
@@ -94,9 +87,6 @@ export const DetailModal = (props: Props) => {
     const trackerCategory = () => props.entry.tracker?.category;
     const country = () => props.entry.client_info?.whois?.country;
     const network = () => props.entry.client_info?.whois?.orgname;
-    const serviceId = () => props.entry.serviceName || props.entry.service_name;
-    const serviceName = () =>
-        serviceId() ? getServiceName(props.services, serviceId()!) || serviceId() : '';
     const reasonValue = () =>
         reasonDetails()
             ? `${getQueryReasonLabel(reasonKey())} / ${reasonDetails()}`
@@ -360,18 +350,6 @@ export const DetailModal = (props: Props) => {
                                 )}
                             </div>
                         </Show>
-                        <Show when={hasValue(serviceName())}>
-                            <div
-                                class={rowClassName()}
-                                data-testid="query-log-detail-service-name"
-                                data-field="service-name"
-                            >
-                                {intl.getMessage('query_log_detail_service_name', {
-                                    value: serviceName(),
-                                    span: renderValue,
-                                })}
-                            </div>
-                        </Show>
                         <Show when={props.entry.rules?.length || hasValue(props.entry.rule)}>
                             <div
                                 class={rowClassName()}
@@ -471,11 +449,9 @@ export const DetailModal = (props: Props) => {
                     onClose={props.onClose}
                     onBlock={props.onBlock}
                     onAddToAllowlist={props.onAddToAllowlist}
-                    onAllowService={props.onAllowService}
                     onDisableFilter={props.onDisableFilter}
                     onDisableSafeBrowsing={props.onDisableSafeBrowsing}
                     onDisableParental={props.onDisableParental}
-                    onDisableSafeSearch={props.onDisableSafeSearch}
                     onRemoveRewrite={props.onRemoveRewrite}
                     onEditRewrite={props.onEditRewrite}
                 />

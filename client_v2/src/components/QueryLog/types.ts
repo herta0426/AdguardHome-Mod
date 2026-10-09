@@ -38,11 +38,6 @@ export type TrackerInfo = {
     } | null;
 };
 
-export type Service = {
-    id: string;
-    name: string;
-};
-
 export type LogEntry = {
     time: string;
     domain: string;
@@ -57,8 +52,6 @@ export type LogEntry = {
     elapsedMs: string;
     originalResponse: ResponseEntry[];
     status: string;
-    service_name: string;
-    serviceName: string;
     filterId: number;
     rule: string;
     rules: RuleInfo[];

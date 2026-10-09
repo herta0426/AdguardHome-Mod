@@ -117,7 +117,6 @@ export const getStats = async (period?: number) => {
             numDnsQueries: data.num_dns_queries || 0,
             numReplacedParental: data.num_replaced_parental || 0,
             numReplacedSafebrowsing: data.num_replaced_safebrowsing || 0,
-            numReplacedSafesearch: data.num_replaced_safesearch || 0,
             avgProcessingTime: secondsToMilliseconds(data.avg_processing_time),
             timeUnits: data.time_units || initialState.timeUnits,
             topUpstreamsAvgTime: normalizeTopStats(data.top_upstreams_avg_time || []).map(

@@ -12,7 +12,6 @@ import {
     DETAILED_DATE_FORMAT_OPTIONS,
     DHCP_VALUES_PLACEHOLDERS,
     FILTERED,
-    FILTERED_STATUS,
     R_CLIENT_ID,
     STANDARD_HTTPS_PORT,
     STANDARD_WEB_PORT,
@@ -57,8 +56,6 @@ export type NormalizedQueryLogItem = {
     rule?: string; // @deprecated
     rules: ResultRule[];
     status?: string;
-    service_name?: string;
-    serviceName?: string;
     originalAnswer?: DnsAnswer[];
     originalResponse: NormalizedDnsResponse[];
     tracker: TrackerData | null;
@@ -118,7 +115,6 @@ export const normalizeLogs = (logs: QueryLogItem[]): NormalizedQueryLogItem[] =>
             filterId,
             rule,
             rules,
-            service_name,
             original_answer,
             upstream,
             cached,
@@ -172,8 +168,6 @@ export const normalizeLogs = (logs: QueryLogItem[]): NormalizedQueryLogItem[] =>
             rule,
             rules: newRules,
             status,
-            service_name,
-            serviceName: service_name,
             originalAnswer: original_answer,
             originalResponse: processResponse(original_answer),
             tracker: getTrackerData(domain),
@@ -274,8 +268,6 @@ export const captitalizeWords = (text: string): string =>
 type InterfaceWithIpAddresses = { ip_addresses?: string[] };
 
 type TopStat = { name: string; count: number };
-
-type ServiceEntry = { id: string; name: string };
 
 export const getInterfaceIp = (option: InterfaceWithIpAddresses): string | undefined => {
     const addresses = (option?.ip_addresses ?? []).filter((ip: string) => typeof ip === 'string');
@@ -537,8 +529,6 @@ export const getParamsForClientsSearch = (
 };
 
 export const checkFiltered = (reason: FilteringReason): boolean => reason.indexOf(FILTERED) === 0;
-export const checkBlockedService = (reason: FilteringReason): boolean =>
-    reason === FILTERED_STATUS.FILTERED_BLOCKED_SERVICE;
 
 /**
  * @param num {number} to format
@@ -921,14 +911,10 @@ export const getSpecialFilterName = (filterId: number): string => {
             return intl.getMessage('custom_rules');
         case SPECIAL_FILTER_ID.SYSTEM_HOSTS:
             return intl.getMessage('system_host_files');
-        case SPECIAL_FILTER_ID.BLOCKED_SERVICES:
-            return intl.getMessage('blocked_services');
         case SPECIAL_FILTER_ID.PARENTAL:
             return intl.getMessage('parental_control');
         case SPECIAL_FILTER_ID.SAFE_BROWSING:
             return intl.getMessage('safe_browsing');
-        case SPECIAL_FILTER_ID.SAFE_SEARCH:
-            return intl.getMessage('safe_search');
         default:
             return intl.getMessage('unknown_filter', { filterId });
     }
@@ -1020,22 +1006,6 @@ export const calculateDhcpPlaceholdersIpv6 = () => {
         lease_duration,
     };
 };
-
-/**
- * @param {array} services
- * @param {string} id
- * @returns {string}
- */
-export const getService = (services: ServiceEntry[], id: string): ServiceEntry | undefined =>
-    services.find((s: ServiceEntry) => s.id === id);
-
-/**
- * @param {array} services
- * @param {string} id
- * @returns {string}
- */
-export const getServiceName = (services: ServiceEntry[], id: string): string | undefined =>
-    getService(services, id)?.name;
 
 /**
  * Decodes a base64-encoded SVG string. Returns an empty string on failure.

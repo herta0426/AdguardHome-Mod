@@ -5,8 +5,7 @@ import { Loader } from 'panel/common/ui/Loader';
 import { Table, TableColumn } from 'panel/common/ui/Table/Table';
 
 import type { NormalizedQueryLogItem } from 'panel/helpers/helpers';
-import { Service } from 'panel/components/QueryLog/types';
-import { hasPersistentClient, isBlockedReason } from 'panel/components/QueryLog/helpers';
+import { isBlockedReason } from 'panel/components/QueryLog/helpers';
 
 import { Filter } from 'panel/helpers/helpers';
 import { InfiniteScrollTrigger } from '../InfiniteScrollTrigger';
@@ -29,15 +28,9 @@ type Props = {
     onRowClick: (entry: NormalizedQueryLogItem) => void;
     onBlock: (domain: string) => void;
     onUnblock: (domain: string) => void;
-    onBlockClient: (domain: string, client: string) => void;
-    onDisallowClient: (ip: string) => void;
-    onAddPersistentClient: (clientId: string) => void;
     onSearchSelect: (value: string) => void;
     filters: Filter[];
-    services: Service[];
     whitelistFilters: Filter[];
-    persistentClientIds: string[];
-    persistentClientsLoaded: boolean;
 };
 
 export const LogTable = (props: Props) => {
@@ -75,7 +68,6 @@ export const LogTable = (props: Props) => {
                     <ReasonCell
                         row={row}
                         filters={props.filters}
-                        services={props.services}
                         whitelistFilters={props.whitelistFilters}
                     />
                 );
@@ -103,18 +95,9 @@ export const LogTable = (props: Props) => {
                 >
                     <ActionsMenu
                         domain={row.domain}
-                        client={row.client}
-                        clientId={row.client_id || row.client}
                         onBlock={props.onBlock}
                         onUnblock={props.onUnblock}
-                        onBlockClient={props.onBlockClient}
-                        onDisallowClient={() => props.onDisallowClient(row.client)}
-                        onAddPersistentClient={props.onAddPersistentClient}
                         isBlocked={isBlockedReason(row.reason)}
-                        showAddPersistentClient={
-                            props.persistentClientsLoaded &&
-                            !hasPersistentClient(row, props.persistentClientIds)
-                        }
                         testIdPrefix="query-log-row"
                     />
                 </div>

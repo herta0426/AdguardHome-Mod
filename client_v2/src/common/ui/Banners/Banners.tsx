@@ -1,10 +1,9 @@
 import { Show, createMemo, createSignal, type JSX } from 'solid-js';
-import { useNavigate, useSearchParams } from '@solidjs/router';
+import { useSearchParams } from '@solidjs/router';
 
 import { Banner } from 'panel/common/ui/Banner';
 import { Button } from 'panel/common/ui/Button';
 import { MANUAL_UPDATE_LINK } from 'panel/helpers/constants';
-import { RoutePath, TLS_WIZARD_QUERY_KEY, linkPathBuilder } from 'panel/components/Routes/Paths';
 import intl from 'panel/common/intl';
 import theme from 'panel/lib/theme';
 
@@ -26,7 +25,6 @@ type Props = {
 };
 
 export const Banners = (props: Props) => {
-    const navigate = useNavigate();
     const [searchParams] = useSearchParams<{ forceBanner?: string }>();
     const [dismissed, setDismissed] = createSignal<BannerSpec | null>(null);
 
@@ -74,11 +72,6 @@ export const Banners = (props: Props) => {
         return active;
     });
 
-    const openTlsWizard = () =>
-        navigate(
-            linkPathBuilder(RoutePath.Encryption, undefined, { [TLS_WIZARD_QUERY_KEY]: 'true' }),
-        );
-
     const announcementLinkHandler = (announcementUrl: string) => (text: string) => (
         <a href={announcementUrl} class={theme.link.link} target="_blank" rel="noopener noreferrer">
             {text}
@@ -97,17 +90,6 @@ export const Banners = (props: Props) => {
                                 <Banner
                                     variant="critical"
                                     message={intl.getMessage('tls_certificate_expired')}
-                                    action={
-                                        <Button
-                                            variant="secondary"
-                                            size="very-small"
-                                            compact
-                                            onClick={openTlsWizard}
-                                            class={s.actionButton}
-                                        >
-                                            {intl.getMessage('update_button')}
-                                        </Button>
-                                    }
                                     onClose={() => setDismissed(current)}
                                     data-testid="banner-tls-expired"
                                 />
@@ -118,17 +100,6 @@ export const Banners = (props: Props) => {
                                 <Banner
                                     variant="warning"
                                     message={intl.getMessage('tls_certificate_expiring')}
-                                    action={
-                                        <Button
-                                            variant="secondary"
-                                            size="very-small"
-                                            compact
-                                            onClick={openTlsWizard}
-                                            class={s.actionButton}
-                                        >
-                                            {intl.getMessage('update_button')}
-                                        </Button>
-                                    }
                                     onClose={() => setDismissed(current)}
                                     data-testid="banner-tls-expiring"
                                 />

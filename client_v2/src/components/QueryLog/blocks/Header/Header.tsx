@@ -73,12 +73,6 @@ const REASON_OPTIONS = [
         },
     },
     {
-        value: 'FilteredBlockedService',
-        get label() {
-            return intl.getMessage('query_log_blocked_services');
-        },
-    },
-    {
         value: 'FilteredSafeBrowsing',
         get label() {
             return intl.getMessage('query_log_blocked_threats');
@@ -94,12 +88,6 @@ const REASON_OPTIONS = [
         value: 'Rewrite',
         get label() {
             return intl.getMessage('dns_rewrites');
-        },
-    },
-    {
-        value: 'FilteredSafeSearch',
-        get label() {
-            return intl.getMessage('query_log_safe_search');
         },
     },
 ];

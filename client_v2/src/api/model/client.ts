@@ -1,6 +1,3 @@
-import type { SafeSearchConfig } from './safeSearchConfig';
-import type { Schedule } from './schedule';
-
 /**
  * Client information.
  */
@@ -13,12 +10,6 @@ export interface Client {
     filtering_enabled?: boolean;
     parental_enabled?: boolean;
     safebrowsing_enabled?: boolean;
-    /** @deprecated */
-    safesearch_enabled?: boolean;
-    safe_search?: SafeSearchConfig;
-    use_global_blocked_services?: boolean;
-    blocked_services_schedule?: Schedule;
-    blocked_services?: string[];
     upstreams?: string[];
     tags?: string[];
     /**

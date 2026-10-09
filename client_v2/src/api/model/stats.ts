@@ -13,8 +13,6 @@ export interface Stats {
     num_blocked_filtering?: number;
     /** Number of requests blocked by safebrowsing module */
     num_replaced_safebrowsing?: number;
-    /** Number of requests blocked by safesearch module */
-    num_replaced_safesearch?: number;
     /** Number of blocked adult websites */
     num_replaced_parental?: number;
     /** Average time in seconds on processing a DNS request */

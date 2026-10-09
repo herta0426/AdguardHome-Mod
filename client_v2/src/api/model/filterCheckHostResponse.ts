@@ -20,8 +20,6 @@ export interface FilterCheckHostResponse {
     rule?: string;
     /** Applied rules. */
     rules?: ResultRule[];
-    /** Set if reason=FilteredBlockedService */
-    service_name?: string;
     /** Set if reason=Rewrite */
     cname?: string;
     /** Set if reason=Rewrite */

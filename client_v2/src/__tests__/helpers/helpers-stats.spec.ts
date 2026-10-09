@@ -8,10 +8,8 @@ import {
     normalizeFilteringStatus,
     getParamsForClientsSearch,
     checkFiltered,
-    checkBlockedService,
     getPathWithQueryString,
     getSpecialFilterName,
-    getServiceName,
     normalizeWhois,
     normalizeLogs,
 } from '../../helpers/helpers';
@@ -109,15 +107,12 @@ describe('getParamsForClientsSearch', () => {
     });
 });
 
-describe('checkFiltered / checkBlockedService', () => {
+describe('checkFiltered', () => {
     it('checkFiltered returns true for Filtered* reasons', () => {
         expect(checkFiltered('FilteredBlackList' as FilteringReason)).toBe(true);
     });
     it('checkFiltered returns false for NotFiltered* reasons', () => {
         expect(checkFiltered('NotFilteredNotFound' as FilteringReason)).toBe(false);
-    });
-    it('checkBlockedService returns true for FilteredBlockedService', () => {
-        expect(checkBlockedService('FilteredBlockedService' as FilteringReason)).toBe(true);
     });
 });
 
@@ -145,15 +140,6 @@ describe('getSpecialFilterName', () => {
         expect(typeof getSpecialFilterName(0)).toBe('string');
         expect(typeof getSpecialFilterName(-1)).toBe('string');
         expect(typeof getSpecialFilterName(-5)).toBe('string');
-    });
-});
-
-describe('getServiceName', () => {
-    it('returns name for matching service id', () => {
-        expect(getServiceName([{ id: 'svc1', name: 'My Service' }], 'svc1')).toBe('My Service');
-    });
-    it('returns undefined for unknown id', () => {
-        expect(getServiceName([{ id: 'svc1', name: 'My Service' }], 'svc-unknown')).toBeUndefined();
     });
 });
 

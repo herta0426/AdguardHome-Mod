@@ -17,7 +17,6 @@ export interface ServerStatus {
     http_port: number;
     protection_enabled: boolean;
     protection_disabled_duration: number;
-    dhcp_available?: boolean;
     running: boolean;
     version: string;
     language: Lang;

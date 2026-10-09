@@ -9,8 +9,8 @@ export type FilteringReason =
     | 'FilteredSafeBrowsing'
     | 'FilteredParental'
     | 'FilteredInvalid'
-    | 'FilteredSafeSearch'
-    | 'FilteredBlockedService'
     | 'Rewrite'
     | 'RewriteEtcHosts'
-    | 'RewriteRule';
+    | 'RewriteRule'
+    | 'FilteredSNI'
+    | 'NotFilteredSNI';

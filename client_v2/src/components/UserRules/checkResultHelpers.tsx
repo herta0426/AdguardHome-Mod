@@ -27,10 +27,6 @@ const getActionLabel = (action: ResultActionKind) => {
             return intl.getMessage('user_rules_disable_parental_control');
         case 'disable-safebrowsing':
             return intl.getMessage('user_rules_disable_browsing_security');
-        case 'disable-safesearch':
-            return intl.getMessage('user_rules_disable_safe_search');
-        case 'disable-blocked-service':
-            return intl.getMessage('user_rules_allow_service');
         case 'disable-filter':
             return intl.getMessage('user_rules_disable_filter');
         case 'edit-rewrite':
@@ -205,21 +201,6 @@ export const getCheckResultMeta = ({
                     source: intl.getMessage('parental_control'),
                 }),
                 actions: [createAction('allow'), createAction('disable-parental')],
-            };
-        case FILTERED_STATUS.FILTERED_SAFE_SEARCH:
-            return {
-                tone: 'rewritten',
-                title: intl.getMessage('user_rules_rewrite_rule_is_applied'),
-                reason: intl.getMessage('settings_safe_search'),
-                actions: [createAction('allow'), createAction('disable-safesearch')],
-            };
-        case FILTERED_STATUS.FILTERED_BLOCKED_SERVICE:
-            return {
-                tone: 'blocked',
-                title: intl.getMessage('user_rules_domain_blocked'),
-                reason: intl.getMessage('blocked_services'),
-                actions: [createAction('allow'), createAction('disable-blocked-service')],
-                rule: primaryRule?.text,
             };
         case FILTERED_STATUS.REWRITE:
             return {

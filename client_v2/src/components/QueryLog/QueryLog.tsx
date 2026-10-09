@@ -12,22 +12,14 @@ import {
     refreshFilteredLogs,
     getAdditionalLogs,
 } from 'panel/stores/queryLogs';
-import { accessState, getAccessList, toggleClientBlock } from 'panel/stores/access';
-import { dashboardState, getClients } from 'panel/stores/dashboard';
 import {
     filteringState,
     getFilteringStatus,
     blockDomain,
     unblockDomain,
-    blockDomainForClient,
     disableFilter,
 } from 'panel/stores/filtering';
-import { servicesState, getAllBlockedServices, allowBlockedService } from 'panel/stores/services';
-import {
-    disableSafeBrowsing,
-    disableParental,
-    disableSafeSearch,
-} from 'panel/stores/settings';
+import { disableSafeBrowsing, disableParental } from 'panel/stores/settings';
 import { deleteRewrite, getRewritesList } from 'panel/stores/rewrites';
 import { openModal } from 'panel/stores/modals';
 import {
@@ -37,8 +29,6 @@ import {
     MODAL_TYPE,
 } from 'panel/helpers/constants';
 import { getLogsUrlParams } from 'panel/helpers/helpers';
-import { RoutePath, linkPathBuilder } from 'panel/components/Routes/Paths';
-
 import { filterLogsByStatus } from './helpers';
 import type { NormalizedQueryLogItem, Filter } from 'panel/helpers/helpers';
 import type { RewriteEntry } from 'panel/api/model/rewriteEntry';
@@ -47,7 +37,6 @@ import { EmptyState, type EmptyStateMode } from './blocks/EmptyState/EmptyState'
 import { LogTable } from './blocks/LogTable';
 import { LogCard } from './blocks/LogCard';
 import { DetailModal } from './blocks/DetailModal';
-import { DisallowDialog } from './blocks/DisallowDialog';
 import { InfiniteScrollTrigger } from './blocks/InfiniteScrollTrigger';
 import { ConfigureRewritesModal } from 'panel/components/FilterLists/blocks/ConfigureRewritesModal/ConfigureRewritesModal';
 
@@ -68,16 +57,12 @@ export const QueryLog = () => {
     const location = useLocation();
 
     const [selectedEntry, setSelectedEntry] = createSignal<NormalizedQueryLogItem | null>(null);
-    const [disallowTarget, setDisallowTarget] = createSignal<string | null>(null);
     const [isIncrementalLoad, setIsIncrementalLoad] = createSignal(false);
     const [rewriteToEdit, setRewriteToEdit] = createSignal<RewriteEntry | undefined>(undefined);
 
     onMount(() => {
         getLogsConfig();
-        getAccessList();
-        getClients();
         getFilteringStatus();
-        getAllBlockedServices();
         getRewritesList();
     });
 
@@ -118,10 +103,6 @@ export const QueryLog = () => {
     const currentReason = () => queryLogsState.filter?.reason ?? DEFAULT_LOGS_FILTER.reason;
     const infiniteScrollResetToken = () =>
         `${currentSearch()}:${currentStatus()}:${currentReason()}`;
-    const persistentClientIds = () =>
-        (dashboardState.clients || []).flatMap(
-            (persistentClient: any) => persistentClient.ids ?? [],
-        );
     const visibleLogs = () =>
         filterLogsByStatus(
             queryLogsState.logs || [],
@@ -171,10 +152,6 @@ export const QueryLog = () => {
         unblockDomain(domain);
     };
 
-    const handleAllowService = (serviceId: string) => {
-        allowBlockedService(serviceId);
-    };
-
     const handleDisableFilter = (filter: Filter) => {
         disableFilter(filter);
     };
@@ -184,9 +161,6 @@ export const QueryLog = () => {
     const handleDisableParental = () => {
         disableParental();
     };
-    const handleDisableSafeSearch = () => {
-        disableSafeSearch();
-    };
     const handleRemoveRewrite = (rewrite: RewriteEntry) => {
         deleteRewrite(rewrite, { withUndo: true });
     };
@@ -194,34 +168,6 @@ export const QueryLog = () => {
         setRewriteToEdit({ ...rewrite });
         openModal(MODAL_TYPE.EDIT_REWRITE);
         handleCloseDetail();
-    };
-
-    const handleBlockClient = (domain: string, client: string) => {
-        blockDomainForClient(domain, client);
-    };
-
-    const handleDisallowClient = (ip: string) => {
-        setDisallowTarget(ip);
-    };
-
-    const handleAddPersistentClient = (clientId: string) => {
-        navigate(linkPathBuilder(RoutePath.ClientsAdd, undefined, { id: clientId }));
-    };
-
-    const handleConfirmDisallow = () => {
-        const target = disallowTarget();
-        if (target) {
-            const disallowedList = accessState.disallowed_clients
-                ? accessState.disallowed_clients.split('\n').filter(Boolean)
-                : [];
-            const isDisallowed = disallowedList.includes(target);
-            toggleClientBlock(target, isDisallowed, isDisallowed ? target : '');
-            setDisallowTarget(null);
-        }
-    };
-
-    const handleCloseDisallow = () => {
-        setDisallowTarget(null);
     };
 
     const handleRowClick = (entry: NormalizedQueryLogItem) => {
@@ -238,20 +184,6 @@ export const QueryLog = () => {
         }
         setIsIncrementalLoad(true);
         getAdditionalLogs();
-    };
-
-    const allowedClients = (): string[] => {
-        const raw = accessState?.allowed_clients;
-        if (!raw) {
-            return [];
-        }
-        if (typeof raw === 'string') {
-            return raw.split('\n').filter(Boolean);
-        }
-        if (Array.isArray(raw)) {
-            return raw as string[];
-        }
-        return [];
     };
 
     return (
@@ -282,15 +214,9 @@ export const QueryLog = () => {
                         onRowClick={handleRowClick}
                         onBlock={handleBlockDomain}
                         onUnblock={handleUnblockDomain}
-                        onBlockClient={handleBlockClient}
-                        onDisallowClient={handleDisallowClient}
-                        onAddPersistentClient={handleAddPersistentClient}
                         onSearchSelect={handleSearch}
                         filters={filteringState.filters || []}
-                        services={servicesState.allServices || []}
                         whitelistFilters={filteringState.whitelistFilters || []}
-                        persistentClientIds={persistentClientIds()}
-                        persistentClientsLoaded={!dashboardState.processingClients}
                     />
                 </div>
 
@@ -313,19 +239,9 @@ export const QueryLog = () => {
                                                         onRowClick={handleRowClick}
                                                         onBlock={handleBlockDomain}
                                                         onUnblock={handleUnblockDomain}
-                                                        onBlockClient={handleBlockClient}
-                                                        onDisallowClient={handleDisallowClient}
-                                                        onAddPersistentClient={
-                                                            handleAddPersistentClient
-                                                        }
                                                         filters={filteringState.filters || []}
-                                                        services={servicesState.allServices || []}
                                                         whitelistFilters={
                                                             filteringState.whitelistFilters || []
-                                                        }
-                                                        persistentClientIds={persistentClientIds()}
-                                                        persistentClientsLoaded={
-                                                            !dashboardState.processingClients
                                                         }
                                                     />
                                                 )}
@@ -357,16 +273,13 @@ export const QueryLog = () => {
                     <DetailModal
                         entry={selectedEntry()!}
                         filters={filteringState.filters || []}
-                        services={servicesState.allServices || []}
                         whitelistFilters={filteringState.whitelistFilters || []}
                         onClose={handleCloseDetail}
                         onBlock={handleBlockDomain}
                         onAddToAllowlist={handleUnblockDomain}
-                        onAllowService={handleAllowService}
                         onDisableFilter={handleDisableFilter}
                         onDisableSafeBrowsing={handleDisableSafeBrowsing}
                         onDisableParental={handleDisableParental}
-                        onDisableSafeSearch={handleDisableSafeSearch}
                         onRemoveRewrite={handleRemoveRewrite}
                         onEditRewrite={handleEditRewrite}
                     />
@@ -378,14 +291,6 @@ export const QueryLog = () => {
                     onClose={() => setRewriteToEdit(undefined)}
                 />
 
-                <Show when={disallowTarget()}>
-                    <DisallowDialog
-                        ip={disallowTarget()!}
-                        isAllowlistMode={allowedClients().length > 0}
-                        onConfirm={handleConfirmDisallow}
-                        onClose={handleCloseDisallow}
-                    />
-                </Show>
             </div>
         </div>
     );

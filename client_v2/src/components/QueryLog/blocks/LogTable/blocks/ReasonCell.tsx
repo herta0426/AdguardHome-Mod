@@ -3,7 +3,6 @@ import cn from 'clsx';
 import theme from 'panel/lib/theme';
 import { Filter } from 'panel/helpers/helpers';
 import type { NormalizedQueryLogItem } from 'panel/helpers/helpers';
-import { Service } from 'panel/components/QueryLog/types';
 import {
     getQueryReasonLabel,
     getQueryReasonDetails,
@@ -15,7 +14,6 @@ import s from '../LogTable.module.pcss';
 type Props = {
     row: NormalizedQueryLogItem;
     filters: Filter[];
-    services: Service[];
     whitelistFilters: Filter[];
 };
 
@@ -28,8 +26,6 @@ export const ReasonCell = (props: Props) => {
             filters: props.filters,
             reason: props.row.reason,
             rules: rules(),
-            serviceName: props.row.service_name || props.row.serviceName,
-            services: props.services,
             whitelistFilters: props.whitelistFilters,
         });
     const reasonLabel = () => getQueryReasonLabel(reasonKey());

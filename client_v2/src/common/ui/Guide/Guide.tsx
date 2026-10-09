@@ -1,5 +1,4 @@
 import { type JSX, createSignal, createMemo, Show } from 'solid-js';
-import { A } from '@solidjs/router';
 import intl from 'panel/common/intl';
 import cn from 'clsx';
 
@@ -7,7 +6,6 @@ import { encryptionState } from 'panel/stores/encryption';
 import { MOBILE_CONFIG_LINKS } from 'panel/helpers/constants';
 import { MobileConfigForm } from 'panel/components/SetupGuide/MobileConfigForm';
 import { Select } from 'panel/common/controls/Select';
-import { Paths } from 'panel/components/Routes/Paths';
 import { type IconType } from '../Icons';
 import { CopiedText } from '../CopiedText';
 import s from './Guide.module.pcss';
@@ -27,7 +25,7 @@ type PlatformLayout = {
 
 type PlatformLayouts = Record<string, PlatformLayout>;
 
-const RouterLayout = (props: PlatformLayoutProps) => (
+const RouterLayout = () => (
     <div class={s.guideContent}>
         <div class={s.title}>{intl.getMessage('setup_devices_router_title')}</div>
         <div class={s.guideText}>
@@ -51,14 +49,7 @@ const RouterLayout = (props: PlatformLayoutProps) => (
             </ol>
             <div class={s.guideParagraph}>
                 {intl.getMessage('setup_devices_router_desc_2', {
-                    a: (text: string) =>
-                        props.isInstall ? (
-                            text
-                        ) : (
-                            <A href={Paths.Dhcp} class={s.dnsLink}>
-                                {text}
-                            </A>
-                        ),
+                    a: (text: string) => text,
                 })}
             </div>
         </div>
@@ -303,7 +294,6 @@ const getDnsSettingsContent = (
     dnsAddresses: string[] | undefined,
     serverName?: string,
     portHttps?: number,
-    isInstall?: boolean,
 ) => {
     const tlsAddress = dnsAddresses?.filter((addr: string) => addr.includes('tls://')) ?? [];
     const httpsAddress = dnsAddresses?.filter((addr: string) => addr.includes('https://')) ?? [];
@@ -315,14 +305,7 @@ const getDnsSettingsContent = (
     return showDnsPrivacyNotice ? (
         <div class={s.guideParagraph}>
             {intl.getMessage('setup_dns_notice_new', {
-                a: (text: string) =>
-                    isInstall ? (
-                        text
-                    ) : (
-                        <A href={Paths.Encryption} class={s.dnsLink}>
-                            {text}
-                        </A>
-                    ),
+                a: (text: string) => text,
             })}
         </div>
     ) : (
@@ -383,7 +366,6 @@ const DnsPrivacyLayout = (props: PlatformLayoutProps) => (
                 props.dnsAddresses,
                 props.serverName,
                 props.portHttps,
-                props.isInstall,
             )}
         </div>
     </div>
@@ -393,7 +375,7 @@ const getPlatformLayouts = (params: PlatformLayoutProps): PlatformLayouts => ({
     Router: {
         title: intl.getMessage('setup_devices_router_title'),
         icon: 'router',
-        component: <RouterLayout isInstall={params.isInstall} />,
+        component: <RouterLayout />,
     },
     Windows: {
         title: intl.getMessage('setup_devices_windows_title'),

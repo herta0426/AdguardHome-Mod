@@ -26,6 +26,5 @@ describe('Query Log filter model', () => {
         expect(QUERY_LOG_STATUS_FILTER.REWRITTEN.QUERY).toBe('rewritten');
         expect(Object.keys(QUERY_LOG_STATUS_FILTER)).not.toContain('ERROR');
         expect(QUERY_LOG_REASON_FILTER.BLOCKED_BY_FILTER.QUERY).toBe('FilteredBlackList');
-        expect(QUERY_LOG_REASON_FILTER.SAFE_SEARCH.QUERY).toBe('FilteredSafeSearch');
     });
 });

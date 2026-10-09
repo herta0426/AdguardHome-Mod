@@ -2,17 +2,9 @@ import { Client, RootState } from 'panel/initialState';
 
 import { CheckResultData, ResultActionKind, RewriteEntry } from './types';
 
-type SafeSearchConfig = Record<string, boolean> & { enabled: boolean };
-
-type BlockedServicesList = {
-    ids?: string[];
-    schedule?: Client['blocked_services_schedule'];
-};
-
 export const CLIENT_SCOPED_ACTIONS: ResultActionKind[] = [
     'disable-parental',
     'disable-safebrowsing',
-    'disable-safesearch',
 ];
 
 export const getPrimaryRule = (result?: CheckResultData | null) => result?.rules?.[0];
@@ -38,14 +30,6 @@ export const findPersistentClient = (clients: Client[], identifier?: string) => 
     return matches.length === 1 ? matches[0] : undefined;
 };
 
-const getSafeSearchConfig = (
-    config?: Partial<SafeSearchConfig>,
-    fallbackEnabled = false,
-): SafeSearchConfig => ({
-    ...(config || {}),
-    enabled: config?.enabled ?? fallbackEnabled,
-});
-
 export const getEffectiveClientProtectionSettings = ({
     client,
     globalFilteringEnabled,
@@ -59,13 +43,6 @@ export const getEffectiveClientProtectionSettings = ({
         return null;
     }
 
-    const effectiveSafeSearch = client.use_global_settings
-        ? getSafeSearchConfig(settingsList?.safesearch as Partial<SafeSearchConfig> | undefined)
-        : getSafeSearchConfig(
-              client.safe_search as Partial<SafeSearchConfig> | undefined,
-              client.safesearch_enabled,
-          );
-
     return {
         filtering_enabled: client.use_global_settings
             ? globalFilteringEnabled
@@ -76,28 +53,6 @@ export const getEffectiveClientProtectionSettings = ({
         safebrowsing_enabled: client.use_global_settings
             ? Boolean(settingsList?.safebrowsing.enabled)
             : client.safebrowsing_enabled,
-        safe_search: effectiveSafeSearch,
-        safesearch_enabled: effectiveSafeSearch.enabled,
-    };
-};
-
-export const getEffectiveBlockedServices = (
-    client: Client,
-    globalBlockedServices: BlockedServicesList,
-) => {
-    const effectiveIds = client.use_global_blocked_services
-        ? globalBlockedServices.ids
-        : client.blocked_services;
-
-    if (!Array.isArray(effectiveIds)) {
-        return null;
-    }
-
-    return {
-        blocked_services: [...effectiveIds],
-        blocked_services_schedule: client.use_global_blocked_services
-            ? (globalBlockedServices.schedule ?? client.blocked_services_schedule)
-            : client.blocked_services_schedule,
     };
 };
 
@@ -125,23 +80,3 @@ export const findMatchedRewrite = (
     return matches.length === 1 ? matches[0] : null;
 };
 
-export const findMatchedBlockedService = (
-    allServices: RootState['services']['allServices'],
-    checkResult?: CheckResultData | null,
-) => {
-    const currentRule = getPrimaryRule(checkResult)?.text;
-    const normalizedServiceName = checkResult?.service_name?.trim().toLowerCase();
-
-    return allServices.find((service) => {
-        if (normalizedServiceName) {
-            const matchesName = service.name?.toLowerCase() === normalizedServiceName;
-            const matchesId = service.id?.toLowerCase() === normalizedServiceName;
-
-            if (matchesName || matchesId) {
-                return true;
-            }
-        }
-
-        return Boolean(currentRule) && service.rules?.includes(currentRule);
-    });
-};

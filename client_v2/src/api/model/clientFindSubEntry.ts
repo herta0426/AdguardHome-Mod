@@ -1,4 +1,3 @@
-import type { SafeSearchConfig } from './safeSearchConfig';
 import type { WhoisInfo } from './whoisInfo';
 
 /**
@@ -13,11 +12,6 @@ export interface ClientFindSubEntry {
     filtering_enabled?: boolean;
     parental_enabled?: boolean;
     safebrowsing_enabled?: boolean;
-    /** @deprecated */
-    safesearch_enabled?: boolean;
-    safe_search?: SafeSearchConfig;
-    use_global_blocked_services?: boolean;
-    blocked_services?: string[];
     upstreams?: string[];
     whois_info?: WhoisInfo;
     /** Whether the client's IP is blocked or not. */

@@ -14,7 +14,6 @@ import {
 import {
     formatElapsedMs,
     getFilterNames,
-    getServiceName,
     type Filter,
 } from 'panel/helpers/helpers';
 import { ResponseEntry, WhoisInfo } from './types';
@@ -33,10 +32,8 @@ export type QueryReasonKey =
     | 'allowlists'
     | 'blocked_by_filter'
     | 'custom_filtering_rules'
-    | 'blocked_services'
     | 'blocked_threats'
     | 'blocked_by_parental_control'
-    | 'safe_search'
     | 'dns_rewrites'
     | 'error';
 
@@ -67,14 +64,10 @@ export const getQueryReasonLabel = (reasonKey: Exclude<QueryReasonKey, 'all'>): 
             return intl.getMessage('query_log_blocked_by_filter');
         case 'custom_filtering_rules':
             return intl.getMessage('query_log_custom_filtering_rules');
-        case 'blocked_services':
-            return intl.getMessage('query_log_blocked_services');
         case 'blocked_threats':
             return intl.getMessage('query_log_blocked_threats');
         case 'blocked_by_parental_control':
             return intl.getMessage('query_log_blocked_by_parental_control');
-        case 'safe_search':
-            return intl.getMessage('query_log_safe_search');
         case 'dns_rewrites':
             return intl.getMessage('dns_rewrites');
         case 'error':
@@ -98,10 +91,6 @@ export const getStatusLabel = (
             return intl.getMessage('allowed');
         case FILTERED_STATUS.NOT_FILTERED_NOT_FOUND:
             return intl.getMessage('show_processed_responses');
-        case FILTERED_STATUS.FILTERED_BLOCKED_SERVICE:
-            return intl.getMessage('blocked_service');
-        case FILTERED_STATUS.FILTERED_SAFE_SEARCH:
-            return intl.getMessage('safe_search');
         case FILTERED_STATUS.FILTERED_BLACK_LIST:
             return intl.getMessage('blocked');
         case FILTERED_STATUS.REWRITE:
@@ -145,7 +134,7 @@ export const getStatusClassName = (reason?: string): string =>
     ] || '';
 
 export const isBlockedReason = (reason?: string): boolean =>
-    !!reason && reason.startsWith('Filtered') && reason !== 'FilteredSafeSearch';
+    !!reason && reason.startsWith('Filtered');
 
 export const getProtocolName = (clientProto: string): string => {
     const key = SCHEME_TO_PROTOCOL_MAP[clientProto as keyof typeof SCHEME_TO_PROTOCOL_MAP];
@@ -188,8 +177,6 @@ type ResponseDetailsParams = {
     filters: Filter[];
     reason?: string;
     rules: { filter_list_id?: number; text?: string }[];
-    serviceName?: string;
-    services?: { id: string; name: string }[];
     whitelistFilters: Filter[];
 };
 
@@ -203,7 +190,6 @@ export const getQueryStatusKey = (
         case FILTERED_STATUS.REWRITE:
         case FILTERED_STATUS.REWRITE_HOSTS:
         case FILTERED_STATUS.REWRITE_RULE:
-        case FILTERED_STATUS.FILTERED_SAFE_SEARCH:
             return 'rewritten';
         case FILTERED_STATUS.NOT_FILTERED_NOT_FOUND:
             return 'processed';
@@ -232,10 +218,6 @@ export const getQueryReasonKey = (
             return 'allowlists';
         case FILTERED_STATUS.NOT_FILTERED_NOT_FOUND:
             return 'none';
-        case FILTERED_STATUS.FILTERED_BLOCKED_SERVICE:
-            return 'blocked_services';
-        case FILTERED_STATUS.FILTERED_SAFE_SEARCH:
-            return 'safe_search';
         case FILTERED_STATUS.REWRITE:
         case FILTERED_STATUS.REWRITE_HOSTS:
         case FILTERED_STATUS.REWRITE_RULE:
@@ -265,17 +247,9 @@ export const getQueryReasonDetails = ({
     filters,
     reason,
     rules,
-    serviceName,
-    services,
     whitelistFilters,
 }: ResponseDetailsParams): string => {
     switch (getQueryReasonKey(reason, rules)) {
-        case 'blocked_services':
-            return (
-                (services && serviceName && getServiceName(services, serviceName)) ||
-                serviceName ||
-                ''
-            );
         case 'blocked_by_filter':
         case 'allowlists':
             return getFilterNames(rules, filters, whitelistFilters).filter(Boolean).join(', ');
@@ -299,28 +273,11 @@ export const filterLogsByStatus = <
     );
 };
 
-export const hasPersistentClient = (
-    entry: {
-        client: string;
-        client_id?: string;
-        client_info?: { name?: string; ids?: string[] } | null;
-    },
-    persistentClientIds: string[],
-): boolean => {
-    const entryIds = [entry.client, entry.client_id, ...(entry.client_info?.ids ?? [])].filter(
-        Boolean,
-    );
-
-    return entryIds.some((entryId) => persistentClientIds.includes(entryId));
-};
-
 export const getResponseDetails = ({
     elapsedMs,
     filters,
     reason,
     rules,
-    serviceName,
-    services,
     whitelistFilters,
 }: ResponseDetailsParams): string => {
     const formattedElapsedMs = formatElapsedMs(
@@ -329,12 +286,6 @@ export const getResponseDetails = ({
     );
 
     switch (reason) {
-        case FILTERED_STATUS.FILTERED_BLOCKED_SERVICE:
-            return (
-                (services && serviceName && getServiceName(services, serviceName)) ||
-                serviceName ||
-                formattedElapsedMs
-            );
         case FILTERED_STATUS.FILTERED_BLACK_LIST:
         case FILTERED_STATUS.NOT_FILTERED_WHITE_LIST: {
             const filterNames = getFilterNames(rules, filters, whitelistFilters)
@@ -346,21 +297,4 @@ export const getResponseDetails = ({
         default:
             return formattedElapsedMs;
     }
-};
-
-export const getBlockClientInfo = (
-    ip: string,
-    disallowed: boolean,
-    disallowedRule: string,
-    allowedClients: string[],
-) => {
-    const isInAllowlist = allowedClients.length > 0;
-    const isLastAllowlistEntry = isInAllowlist && allowedClients.length === 1;
-
-    return {
-        isInAllowlist,
-        isLastAllowlistEntry,
-        disallowed,
-        disallowedRule: disallowedRule || ip,
-    };
 };

@@ -1,7 +1,6 @@
 import {
     BLOCKING_MODES,
     DAY,
-    DEFAULT_DNS_CACHE_SIZE,
     DEFAULT_LOGS_FILTER,
     ModalType,
     STANDARD_DNS_PORT,
@@ -13,22 +12,16 @@ import { Filter, type NormalizedQueryLogItem } from './helpers/helpers';
 import type { WhoisInfo } from './api/model/whoisInfo';
 import type { ClientAuto as AutoClient } from './api/model/clientAuto';
 import type { Client } from './api/model/client';
-import type { DHCPNetInterfaces } from './api/model/dHCPNetInterfaces';
 import type { TlsConfig } from './api/model/tlsConfig';
 import type { TlsConfigKeyType } from './api/model/tlsConfigKeyType';
 import type { DnsInfo200 } from './api/model/dnsInfo200';
 import type { DNSConfigBlockingMode, DNSConfigUpstreamMode } from './api/model';
 import type { FilterStatus } from './api/model/filterStatus';
-import type { DhcpStaticLease } from './api/model/dhcpStaticLease';
-import type { DhcpSearchResult } from './api/model/dhcpSearchResult';
 import type { Stats } from './api/model/stats';
 import type { GetStatsConfigResponse } from './api/model/getStatsConfigResponse';
 import type { GetQueryLogConfigResponse } from './api/model/getQueryLogConfigResponse';
 import type { RewriteEntry } from './api/model/rewriteEntry';
 import type { RewriteSettings } from './api/model/rewriteSettings';
-import type { BlockedServicesSchedule } from './api/model/blockedServicesSchedule';
-import type { BlockedService } from './api/model/blockedService';
-import type { ServiceGroup } from './api/model/serviceGroup';
 import type { QueryLogFilter } from './helpers/constants';
 import type { ToastNotice } from './stores/toasts';
 
@@ -135,7 +128,6 @@ export type SettingsData = {
         safebrowsing: {
             enabled: boolean;
         };
-        safesearch: Record<string, boolean>;
     };
 };
 
@@ -190,49 +182,6 @@ export type ClientsData = {
     isModalOpen: boolean;
     modalClientName: string;
     modalType: string;
-};
-
-export type AccessData = {
-    processing: boolean;
-    processingSet: boolean;
-    allowed_clients: string;
-    disallowed_clients: string;
-    blocked_hosts: string;
-};
-
-export type DhcpData = {
-    processing: boolean;
-    processingStatus: boolean;
-    processingInterfaces: boolean;
-    processingDhcp: boolean;
-    processingConfig: boolean;
-    processingAdding: boolean;
-    processingDeleting: boolean;
-    processingUpdating: boolean;
-    enabled: boolean;
-    interface_name: string;
-    // Use generated DhcpSearchResult:
-    check: DhcpSearchResult | null;
-    // Keep inline v4/v6 (required — always present after init):
-    v4: {
-        gateway_ip: string;
-        subnet_mask: string;
-        range_start: string;
-        range_end: string;
-        lease_duration: number;
-    };
-    v6: {
-        range_start: string;
-        lease_duration: number;
-    };
-    // UI-normalized leases (flat without expires):
-    leases: { hostname: string; ip: string; mac: string }[];
-    staticLeases: DhcpStaticLease[];
-    isModalOpen: boolean;
-    leaseModalConfig?: { hostname: string; ip: string; mac: string };
-    modalType: string;
-    dhcp_available: boolean;
-    interfaces?: DHCPNetInterfaces;
 };
 
 export type DnsConfigData = Omit<
@@ -299,110 +248,23 @@ export type QueryLogsData = Omit<GetQueryLogConfigResponse, 'interval'> & {
     isEntireLog: boolean;
 };
 
-export type ServicesData = BlockedServicesSchedule & {
-    processing: boolean;
-    processingAll: boolean;
-    processingSet: boolean;
-    allServices: BlockedService[];
-    allGroups: ServiceGroup[];
-};
-
 export type ModalsData = {
     modalId: ModalType | null;
 };
 
-export type ClientFormState = {
-    mode: 'add' | 'edit';
-    originalName: string;
-    name: string;
-    ids: string[];
-    tags: string[];
-    use_global_settings: boolean;
-    filtering_enabled: boolean;
-    safebrowsing_enabled: boolean;
-    parental_enabled: boolean;
-    safe_search: {
-        enabled: boolean;
-        google: boolean;
-        youtube: boolean;
-        bing: boolean;
-        duckduckgo: boolean;
-        yandex: boolean;
-        pixabay: boolean;
-        ecosia: boolean;
-    };
-    ignore_querylog: boolean;
-    ignore_statistics: boolean;
-    blocked_services: string[];
-    use_global_blocked_services: boolean;
-    blocked_services_schedule: {
-        time_zone: string;
-        sun?: { start: number; end: number };
-        mon?: { start: number; end: number };
-        tue?: { start: number; end: number };
-        wed?: { start: number; end: number };
-        thu?: { start: number; end: number };
-        fri?: { start: number; end: number };
-        sat?: { start: number; end: number };
-    };
-    upstreams: string;
-    upstreams_cache_enabled: boolean;
-    upstreams_cache_size: number | string;
-    processingSave: boolean;
-    formErrors: Record<string, string | (string | undefined)[]>;
-};
-
-export const getInitialClientFormState = (): ClientFormState => ({
-    mode: 'add',
-    originalName: '',
-    name: '',
-    ids: [''],
-    tags: [],
-    use_global_settings: false,
-    filtering_enabled: false,
-    safebrowsing_enabled: false,
-    parental_enabled: false,
-    safe_search: {
-        enabled: false,
-        google: false,
-        youtube: false,
-        bing: false,
-        duckduckgo: false,
-        yandex: false,
-        pixabay: false,
-        ecosia: false,
-    },
-    ignore_querylog: false,
-    ignore_statistics: false,
-    blocked_services: [],
-    use_global_blocked_services: false,
-    blocked_services_schedule: {
-        time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    },
-    upstreams: '',
-    upstreams_cache_enabled: false,
-    upstreams_cache_size: DEFAULT_DNS_CACHE_SIZE,
-    processingSave: false,
-    formErrors: {},
-});
-
 export type RootState = {
-    access?: AccessData;
     clients?: ClientsData;
     dashboard?: DashboardData;
-    dhcp?: DhcpData;
     dnsConfig?: DnsConfigData;
     encryption?: EncryptionData;
     filtering?: FilteringData;
     queryLogs?: QueryLogsData;
     rewrites?: RewritesData;
-    services?: ServicesData;
     settings?: SettingsData;
     stats?: StatsData;
     install?: InstallData;
     toasts: { notices: ToastNotice[] };
     modals: ModalsData;
-    clientForm: ClientFormState;
 };
 
 export type InstallState = {
@@ -421,13 +283,6 @@ export type LoginState = {
 };
 
 export const initialState: RootState = {
-    access: {
-        processing: true,
-        processingSet: false,
-        allowed_clients: '',
-        disallowed_clients: '',
-        blocked_hosts: '',
-    },
     clients: {
         processing: true,
         processingAdding: false,
@@ -463,36 +318,6 @@ export const initialState: RootState = {
         canAutoUpdate: false,
         language: '', // ???
         isUpdateAvailable: false,
-    },
-    dhcp: {
-        processing: true,
-        processingStatus: false,
-        processingInterfaces: false,
-        processingDhcp: false,
-        processingConfig: false,
-        processingAdding: false,
-        processingDeleting: false,
-        processingUpdating: false,
-        enabled: false,
-        interface_name: '',
-        check: null,
-        v4: {
-            gateway_ip: '',
-            subnet_mask: '',
-            range_start: '',
-            range_end: '',
-            lease_duration: 0,
-        },
-        v6: {
-            range_start: '',
-            lease_duration: 0,
-        },
-        leases: [],
-        staticLeases: [],
-        isModalOpen: false,
-        leaseModalConfig: undefined,
-        modalType: '',
-        dhcp_available: false,
     },
     dnsConfig: {
         processingGetConfig: false,
@@ -600,13 +425,6 @@ export const initialState: RootState = {
         list: [],
         enabled: true,
     },
-    services: {
-        processing: true,
-        processingAll: true,
-        processingSet: false,
-        allServices: [],
-        allGroups: [],
-    } as ServicesData,
     settings: {
         processing: true,
         processingTestUpstream: false,
@@ -630,7 +448,6 @@ export const initialState: RootState = {
         num_dns_queries: 0,
         num_replaced_parental: 0,
         num_replaced_safebrowsing: 0,
-        num_replaced_safesearch: 0,
         avg_processing_time: 0,
         timeUnits: TIME_UNITS.HOURS,
         enabled: true,
@@ -640,5 +457,4 @@ export const initialState: RootState = {
     },
     toasts: { notices: [] },
     modals: { modalId: null },
-    clientForm: getInitialClientFormState(),
 };

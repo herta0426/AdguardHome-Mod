@@ -7,14 +7,11 @@ import {
     parentalStatus,
     parentalEnable,
     parentalDisable,
-    safesearchStatus,
-    safesearchSettings,
     testUpstreamDNS,
 } from 'panel/api/generated';
 import { addErrorToast, addSuccessToast, createUndoToast } from './toasts';
 import { splitByNewLine } from 'panel/helpers/helpers';
 import intl from 'panel/common/intl';
-import type { SafeSearchConfig } from 'panel/api/model/safeSearchConfig';
 import type { UpstreamsConfig } from 'panel/api/model/upstreamsConfig';
 
 type SettingsState = {
@@ -25,7 +22,6 @@ type SettingsState = {
     settingsList: {
         parental: { enabled: boolean };
         safebrowsing: { enabled: boolean };
-        safesearch: SafeSearchConfig;
     };
 };
 
@@ -37,7 +33,6 @@ const initialState: SettingsState = {
     settingsList: {
         parental: { enabled: false },
         safebrowsing: { enabled: false },
-        safesearch: {},
     },
 };
 
@@ -46,13 +41,14 @@ const [state, setState] = createStore<SettingsState>(initialState);
 export const initSettings = async () => {
     setState('processing', true);
     try {
-        const [safebrowsingStatusData, parentalStatusData, safesearchStatusData] =
-            await Promise.all([safebrowsingStatus(), parentalStatus(), safesearchStatus()]);
+        const [safebrowsingStatusData, parentalStatusData] = await Promise.all([
+            safebrowsingStatus(),
+            parentalStatus(),
+        ]);
         setState({
             settingsList: {
                 safebrowsing: { enabled: safebrowsingStatusData.enabled },
                 parental: { enabled: parentalStatusData.enabled },
-                safesearch: { ...safesearchStatusData },
             },
             processing: false,
             initialized: true,
@@ -64,17 +60,10 @@ export const initSettings = async () => {
 };
 
 export async function toggleSetting(
-    settingKey: 'safesearch',
-    status: SafeSearchConfig,
-): Promise<boolean>;
-export async function toggleSetting(
     settingKey: 'safebrowsing' | 'parental',
     status: boolean,
 ): Promise<boolean>;
-export async function toggleSetting(
-    settingKey: string,
-    status: boolean | SafeSearchConfig,
-): Promise<boolean> {
+export async function toggleSetting(settingKey: string, status: boolean): Promise<boolean> {
     try {
         switch (settingKey) {
             case 'safebrowsing':
@@ -92,10 +81,6 @@ export async function toggleSetting(
                     await parentalEnable();
                 }
                 setState('settingsList', 'parental', 'enabled', !status);
-                return true;
-            case 'safesearch':
-                await safesearchSettings(status as SafeSearchConfig);
-                setState('settingsList', 'safesearch', status as SafeSearchConfig);
                 return true;
             default:
                 return false;
@@ -145,30 +130,6 @@ export const disableParental = () =>
         (enabled) => setState('settingsList', 'parental', 'enabled', enabled),
         intl.getMessage('user_rules_parental_control_disabled'),
     );
-
-export const disableSafeSearch = async (): Promise<boolean> => {
-    // Snapshot as a plain object: store reads return live proxies, so keeping
-    // a reference would reflect post-disable state instead of the original.
-    const previousConfig = { ...state.settingsList.safesearch };
-    try {
-        await safesearchSettings({ ...previousConfig, enabled: false });
-        setState('settingsList', 'safesearch', { ...previousConfig, enabled: false });
-        addSuccessToast(
-            createUndoToast(
-                intl.getMessage('user_rules_safe_search_disabled'),
-                intl.getMessage('notify_undo'),
-                async () => {
-                    await safesearchSettings(previousConfig);
-                    setState('settingsList', 'safesearch', previousConfig);
-                },
-            ),
-        );
-        return true;
-    } catch (error) {
-        addErrorToast({ error });
-        return false;
-    }
-};
 
 export const testUpstreamWithFormValues = async (
     formValues: {

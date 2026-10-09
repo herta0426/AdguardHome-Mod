@@ -2,7 +2,7 @@ import cn from 'clsx';
 
 import theme from 'panel/lib/theme';
 
-import { LogEntry, Service } from 'panel/components/QueryLog/types';
+import { LogEntry } from 'panel/components/QueryLog/types';
 import {
     getResponseDetails,
     getStatusClassName,
@@ -14,7 +14,6 @@ import s from '../LogTable.module.pcss';
 type Props = {
     row: LogEntry;
     filters: Filter[];
-    services: Service[];
     whitelistFilters: Filter[];
 };
 
@@ -27,8 +26,6 @@ export const ResponseCell = (props: Props) => {
             filters: props.filters,
             reason: props.row.reason,
             rules: props.row.rules,
-            serviceName: props.row.service_name,
-            services: props.services,
             whitelistFilters: props.whitelistFilters,
         });
 

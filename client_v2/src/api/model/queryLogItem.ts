@@ -16,6 +16,8 @@ export interface QueryLogItem {
     cached?: boolean;
     /** Upstream URL starting with tcp://, tls://, https://, or with an IP address. */
     upstream?: string;
+    /** The destination address of the connection.  It is only set for the entries that are not actual DNS requests, such as the ones added by the SNI filtering. */
+    destination?: string;
     /** If true, the response had the Authenticated Data (AD) flag set. */
     answer_dnssec?: boolean;
     /** The client's IP address. */
@@ -43,8 +45,6 @@ export interface QueryLogItem {
     /** Applied rules. */
     rules?: ResultRule[];
     reason?: FilteringReason;
-    /** Set if reason=FilteredBlockedService */
-    service_name?: string;
     /** DNS response status */
     status?: string;
     /** DNS request processing start time */

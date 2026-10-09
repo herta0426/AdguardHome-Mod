@@ -7,7 +7,6 @@ import { filteringState, checkHost, getFilteringStatus, setRules } from 'panel/s
 import { settingsState, initSettings } from 'panel/stores/settings';
 import { dashboardState, getClients } from 'panel/stores/dashboard';
 import { clientsState } from 'panel/stores/clients';
-import { servicesState, getBlockedServices, getAllBlockedServices } from 'panel/stores/services';
 import { rewritesState, getRewritesList } from 'panel/stores/rewrites';
 import { MODAL_TYPE } from 'panel/helpers/constants';
 import theme from 'panel/lib/theme';
@@ -43,8 +42,7 @@ export const UserRules = () => {
             filteringState.processingCheck ||
             clientsState.processingUpdating ||
             rewritesState.processingDelete ||
-            rewritesState.processingUpdate ||
-            servicesState.processingSet,
+            rewritesState.processingUpdate,
     );
 
     // The page loader shows exactly once: until every store this page reads has
@@ -55,9 +53,7 @@ export const UserRules = () => {
             !filteringState.filtersInitialized ||
             !settingsState.initialized ||
             !dashboardState.clientsInitialized ||
-            !rewritesState.initialized ||
-            !servicesState.initialized ||
-            !servicesState.allInitialized,
+            !rewritesState.initialized,
     );
 
     const {
@@ -86,8 +82,6 @@ export const UserRules = () => {
         initSettings();
         getClients();
         getRewritesList();
-        getBlockedServices();
-        getAllBlockedServices();
     });
 
     createEffect(() => {

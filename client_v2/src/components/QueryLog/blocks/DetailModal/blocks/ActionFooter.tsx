@@ -18,18 +18,15 @@ type Props = {
     onClose: () => void;
     onBlock: (domain: string) => void;
     onAddToAllowlist: (domain: string) => void;
-    onAllowService: (serviceId: string) => void;
     onDisableFilter: (filter: Filter) => void;
     onDisableSafeBrowsing: () => void;
     onDisableParental: () => void;
-    onDisableSafeSearch: () => void;
     onRemoveRewrite: (rewrite: RewriteEntry) => void;
     onEditRewrite: (rewrite: RewriteEntry) => void;
 };
 
 export const ActionFooter = (props: Props) => {
     const reasonKey = () => getQueryReasonKey(props.entry.reason, props.entry.rules ?? []);
-    const serviceId = () => props.entry.serviceName || props.entry.service_name;
     const filterToDisable = () => {
         const filterListId = (props.entry.rules ?? []).find(
             ({ filter_list_id }) => filter_list_id != null,
@@ -42,7 +39,6 @@ export const ActionFooter = (props: Props) => {
     const rewriteRule = () => findRewriteRuleByDomain(props.entry.domain);
     const actions = () =>
         getDetailModalActions(reasonKey(), {
-            hasServiceId: !!serviceId(),
             canDisableFilter: !!filterToDisable(),
             hasRewriteRule: !!rewriteRule(),
         });
@@ -54,15 +50,6 @@ export const ActionFooter = (props: Props) => {
 
     const handleAddToAllowlist = () => {
         props.onAddToAllowlist(props.entry.domain);
-        props.onClose();
-    };
-
-    const handleAllowService = () => {
-        const sid = serviceId();
-        if (!sid) {
-            return;
-        }
-        props.onAllowService(sid);
         props.onClose();
     };
 
@@ -80,11 +67,6 @@ export const ActionFooter = (props: Props) => {
 
     const handleDisableParental = () => {
         props.onDisableParental();
-        props.onClose();
-    };
-
-    const handleDisableSafeSearch = () => {
-        props.onDisableSafeSearch();
         props.onClose();
     };
 
@@ -127,13 +109,6 @@ export const ActionFooter = (props: Props) => {
             label: () => intl.getMessage('user_rules_add_to_allowlist'),
             onClick: handleAddToAllowlist,
         },
-        'allow-service': {
-            variant: 'secondary',
-            testId: 'query-log-detail-action-allow-service',
-            dataAction: 'allow-service',
-            label: () => intl.getMessage('user_rules_allow_service'),
-            onClick: handleAllowService,
-        },
         'disable-filter': {
             variant: 'secondary',
             testId: 'query-log-detail-action-disable-filter',
@@ -154,13 +129,6 @@ export const ActionFooter = (props: Props) => {
             dataAction: 'disable-parental',
             label: () => intl.getMessage('user_rules_disable_parental_control'),
             onClick: handleDisableParental,
-        },
-        'disable-safe-search': {
-            variant: 'secondary',
-            testId: 'query-log-detail-action-disable-safe-search',
-            dataAction: 'disable-safe-search',
-            label: () => intl.getMessage('user_rules_disable_safe_search'),
-            onClick: handleDisableSafeSearch,
         },
         'remove-dns-rewrite': {
             variant: 'primary',

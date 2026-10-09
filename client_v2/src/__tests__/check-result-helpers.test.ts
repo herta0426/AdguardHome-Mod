@@ -78,13 +78,6 @@ describe('getCheckResultMeta', () => {
             whitelistFilters: [],
         });
 
-        const blockedServicesMeta = getCheckResultMeta({
-            reason: FILTERED_STATUS.FILTERED_BLOCKED_SERVICE,
-            rules: [{ filter_list_id: 0, text: '||amemv.com^' }],
-            filters: [],
-            whitelistFilters: [],
-        });
-
         expect(customMeta.reason).toBe(
             intl.getMessage('user_rules_reason_blocked_by', {
                 source: intl.getMessage('custom_filtering_rules'),
@@ -93,31 +86,6 @@ describe('getCheckResultMeta', () => {
         expect(safeBrowsingMeta.reason).toBe(intl.getMessage('blocked_threats'));
         expect(safeBrowsingMeta.source).toBe(intl.getMessage('safe_browsing'));
         expect(safeBrowsingMeta.rule).toBe('adguard-malware-shavar');
-        expect(blockedServicesMeta.reason).toBe(intl.getMessage('blocked_services'));
-        expect(blockedServicesMeta.rule).toBe('||amemv.com^');
-    });
-
-    it('renders Safe Search as a rewritten result with the Safe search status', () => {
-        const safeSearchMeta = getCheckResultMeta({
-            reason: FILTERED_STATUS.FILTERED_SAFE_SEARCH,
-            rules: [],
-            filters: [],
-            whitelistFilters: [],
-        });
-
-        expect(safeSearchMeta.tone).toBe('rewritten');
-        expect(safeSearchMeta.title).toBe(intl.getMessage('user_rules_rewrite_rule_is_applied'));
-        expect(safeSearchMeta.reason).toBe(intl.getMessage('settings_safe_search'));
-        expect(safeSearchMeta.actions).toEqual([
-            {
-                kind: 'allow',
-                label: intl.getMessage('user_rules_add_to_allowlist'),
-            },
-            {
-                kind: 'disable-safesearch',
-                label: intl.getMessage('user_rules_disable_safe_search'),
-            },
-        ]);
     });
 
     it('omits filter and allowlist reasons when the source name is unavailable', () => {

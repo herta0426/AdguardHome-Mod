@@ -43,11 +43,9 @@ const defaultProps: ComponentProps<typeof ActionFooter> = {
     onClose: vi.fn(),
     onBlock: vi.fn(),
     onAddToAllowlist: vi.fn(),
-    onAllowService: vi.fn(),
     onDisableFilter: vi.fn(),
     onDisableSafeBrowsing: vi.fn(),
     onDisableParental: vi.fn(),
-    onDisableSafeSearch: vi.fn(),
     onRemoveRewrite: vi.fn(),
     onEditRewrite: vi.fn(),
 };
@@ -134,17 +132,6 @@ describe('ActionFooter', () => {
         );
     });
 
-    it('blocked service → Allow service calls onAllowService with the service id and onClose', () => {
-        const props = {
-            ...defaultProps,
-            entry: makeEntry({ reason: 'FilteredBlockedService', serviceName: 'amazon' }),
-        };
-        render(() => <ActionFooter {...props} />);
-        fireEvent.click(screen.getByTestId('query-log-detail-action-allow-service'));
-        expect(props.onAllowService).toHaveBeenCalledWith('amazon');
-        expect(props.onClose).toHaveBeenCalled();
-    });
-
     it('blocked threat → Disable browsing security calls onDisableSafeBrowsing and onClose', () => {
         const props = { ...defaultProps, entry: makeEntry({ reason: 'FilteredSafeBrowsing' }) };
         render(() => <ActionFooter {...props} />);
@@ -158,14 +145,6 @@ describe('ActionFooter', () => {
         render(() => <ActionFooter {...props} />);
         fireEvent.click(screen.getByTestId('query-log-detail-action-disable-parental'));
         expect(props.onDisableParental).toHaveBeenCalled();
-        expect(props.onClose).toHaveBeenCalled();
-    });
-
-    it('safe search → Disable safe search calls onDisableSafeSearch and onClose', () => {
-        const props = { ...defaultProps, entry: makeEntry({ reason: 'FilteredSafeSearch' }) };
-        render(() => <ActionFooter {...props} />);
-        fireEvent.click(screen.getByTestId('query-log-detail-action-disable-safe-search'));
-        expect(props.onDisableSafeSearch).toHaveBeenCalled();
         expect(props.onClose).toHaveBeenCalled();
     });
 

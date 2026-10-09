@@ -6,5 +6,4 @@ export type QueryLogResponseStatus =
     | 'blocked_parental'
     | 'whitelisted'
     | 'rewritten'
-    | 'safe_search'
     | 'processed';

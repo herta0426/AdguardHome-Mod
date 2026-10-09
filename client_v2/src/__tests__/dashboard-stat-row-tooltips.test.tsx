@@ -15,9 +15,6 @@ import { mockMatchMedia } from 'panel/__tests__/helpers/matchMedia';
 const STATS = {
     numDnsQueries: 2000,
     numBlockedFiltering: 500,
-    numReplacedSafebrowsing: 100,
-    numReplacedParental: 40,
-    numReplacedSafesearch: 8,
     avgProcessingTime: 152,
 };
 
@@ -25,9 +22,6 @@ const STATS = {
 const ROWS = [
     { label: copy('dns_queries'), description: copy('dns_queries_tooltip') },
     { label: copy('ads_blocked'), description: copy('ads_blocked_tooltip') },
-    { label: copy('threats_blocked'), description: copy('threats_blocked_tooltip') },
-    { label: copy('adult_websites_blocked'), description: copy('adult_websites_blocked_tooltip') },
-    { label: copy('safe_search_used'), description: copy('safe_search_used_tooltip') },
     {
         label: copy('average_time_processing'),
         description: copy('average_time_processing_tooltip'),

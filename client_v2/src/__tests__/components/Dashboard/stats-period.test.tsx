@@ -69,11 +69,6 @@ vi.mock('panel/stores/dashboard', () => ({
     getClients: vi.fn(),
 }));
 
-vi.mock('panel/stores/access', () => ({
-    accessState: { processing: false },
-    getAccessList: vi.fn(),
-}));
-
 // The Header is what puts the period into the dropdown, so the stub renders the
 // props the Dashboard passes instead of the real Select.
 vi.mock('panel/components/Dashboard/blocks/Header/Header', () => ({
@@ -104,7 +99,6 @@ vi.mock('panel/components/Dashboard/blocks/EmptyState/EmptyState', () => ({
 vi.mock('panel/components/Dashboard/blocks/GeneralStatistics', () => ({
     GeneralStatistics: (): null => null,
 }));
-vi.mock('panel/components/Dashboard/blocks/TopClients', () => ({ TopClients: (): null => null }));
 vi.mock('panel/components/Dashboard/blocks/TopQueriedDomains', () => ({
     TopQueriedDomains: (): null => null,
 }));

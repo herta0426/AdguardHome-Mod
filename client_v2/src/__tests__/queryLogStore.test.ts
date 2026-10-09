@@ -49,7 +49,6 @@ describe('queryLogs store', () => {
                     'Rewrite',
                     'RewriteEtcHosts',
                     'RewriteRule',
-                    'FilteredSafeSearch',
                 ]),
             }),
         );
@@ -78,7 +77,6 @@ describe('queryLogs store', () => {
                     'FilteredBlackList',
                     'FilteredSafeBrowsing',
                     'FilteredParental',
-                    'FilteredBlockedService',
                 ]),
             }),
         );

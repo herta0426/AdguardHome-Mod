@@ -19,7 +19,6 @@ export type CheckResultData = {
     hostname?: string;
     reason?: string;
     rules?: CheckResultRule[];
-    service_name?: string;
     cname?: string;
     ip_addrs?: string[];
 };
@@ -29,8 +28,6 @@ export type ResultActionKind =
     | 'block'
     | 'disable-parental'
     | 'disable-safebrowsing'
-    | 'disable-safesearch'
-    | 'disable-blocked-service'
     | 'disable-filter'
     | 'edit-rewrite'
     | 'delete-rewrite'

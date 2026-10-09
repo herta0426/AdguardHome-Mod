@@ -14,7 +14,6 @@ import {
 import { getClients } from 'panel/stores/dashboard';
 import { initSettings, toggleSetting } from 'panel/stores/settings';
 import { updateClient } from 'panel/stores/clients';
-import { servicesState, getBlockedServices, updateBlockedServices } from 'panel/stores/services';
 import { updateRewrite, deleteRewrite, addRewrite, getRewritesList } from 'panel/stores/rewrites';
 import { addSuccessToast, createUndoToast } from 'panel/stores/toasts';
 import { openModal } from 'panel/stores/modals';
@@ -24,10 +23,8 @@ import type { Client } from 'panel/initialState';
 
 import {
     CLIENT_SCOPED_ACTIONS,
-    findMatchedBlockedService,
     findMatchedRewrite,
     findPersistentClient,
-    getEffectiveBlockedServices,
     getEffectiveClientProtectionSettings,
     getPrimaryRule,
 } from './helpers';
@@ -268,50 +265,6 @@ export const useUserRulesActions = (
         });
     };
 
-    const handleDisableSafeSearch = async () => {
-        const currentSafeSearch = params.settingsList?.()?.safesearch;
-        const lastCheck = params.lastSubmittedCheck();
-        const clientSnapshot = resolvedClient();
-        const filteringEnabled = params.filteringEnabled();
-        const settingsList = params.settingsList?.();
-
-        if (!lastCheck?.client && !currentSafeSearch) {
-            return;
-        }
-
-        await performWithUndo({
-            perform: () =>
-                lastCheck?.client
-                    ? updateResolvedClient((client) => {
-                          const effectiveSettings = getEffectiveClientProtectionSettings({
-                              client,
-                              globalFilteringEnabled: filteringEnabled,
-                              settingsList,
-                          });
-                          if (!effectiveSettings) return null;
-                          const safeSearch = { ...effectiveSettings.safe_search, enabled: false };
-                          return {
-                              ...client,
-                              ...effectiveSettings,
-                              use_global_settings: false,
-                              safe_search: safeSearch,
-                              safesearch_enabled: safeSearch.enabled,
-                          };
-                      })
-                    : toggleSetting('safesearch', { ...currentSafeSearch, enabled: false }),
-            message: intl.getMessage('user_rules_safe_search_disabled'),
-            undo: () =>
-                lastCheck?.client && clientSnapshot
-                    ? updateClient(clientSnapshot.name, {
-                          ...clientSnapshot,
-                          safe_search: { ...clientSnapshot.safe_search, enabled: true },
-                          safesearch_enabled: true,
-                      })
-                    : toggleSetting('safesearch', { ...currentSafeSearch, enabled: true }),
-            refresh: refreshSettingsAndClients,
-        });
-    };
-
     const handleDisableFilter = async () => {
         const result = params.checkResult();
         const filterId = getPrimaryRule(result)?.filter_list_id;
@@ -344,56 +297,6 @@ export const useUserRulesActions = (
                     isWhitelist,
                 ),
             refresh: () => recheckCurrentTarget(),
-        });
-    };
-
-    const handleAllowBlockedService = async () => {
-        const result = params.checkResult();
-        const matchedService = findMatchedBlockedService(servicesState.allServices, result);
-        if (!matchedService) return;
-
-        const previousBlockedServiceIds = [...(servicesState.list?.ids || [])];
-        const clientSnapshot = resolvedClient();
-
-        await performWithUndo({
-            perform: () =>
-                resolvedClient()
-                    ? updateResolvedClient((client) => {
-                          const effectiveBlockedServices = getEffectiveBlockedServices(
-                              client,
-                              servicesState.list,
-                          );
-                          if (!effectiveBlockedServices) return null;
-                          return {
-                              ...client,
-                              ...effectiveBlockedServices,
-                              use_global_blocked_services: false,
-                              blocked_services: effectiveBlockedServices.blocked_services.filter(
-                                  (id: string) => id !== matchedService.id,
-                              ),
-                          };
-                      })
-                    : updateBlockedServices({
-                          ...servicesState.list,
-                          ids: (servicesState.list?.ids || []).filter(
-                              (id: string) => id !== matchedService.id,
-                          ),
-                      }),
-            message: intl.getMessage('user_rules_service_allowed', { value: matchedService.name }),
-            undo: () =>
-                clientSnapshot
-                    ? updateClient(clientSnapshot.name, {
-                          ...clientSnapshot,
-                          blocked_services: [...previousBlockedServiceIds],
-                      })
-                    : updateBlockedServices({
-                          ...servicesState.list,
-                          ids: previousBlockedServiceIds,
-                      }),
-            refresh: async () => {
-                await getBlockedServices();
-                await getClients();
-            },
         });
     };
 
@@ -497,12 +400,6 @@ export const useUserRulesActions = (
                 break;
             case 'disable-safebrowsing':
                 await handleDisableSafeBrowsing();
-                break;
-            case 'disable-safesearch':
-                await handleDisableSafeSearch();
-                break;
-            case 'disable-blocked-service':
-                await handleAllowBlockedService();
                 break;
             case 'disable-filter':
                 await handleDisableFilter();

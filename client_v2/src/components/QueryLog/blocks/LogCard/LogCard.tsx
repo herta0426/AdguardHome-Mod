@@ -17,11 +17,9 @@ import {
     getQueryStatusLabel,
     getQueryStatusKey,
     getStatusClassName,
-    hasPersistentClient,
     isBlockedReason,
 } from '../../helpers';
 import type { NormalizedQueryLogItem } from 'panel/helpers/helpers';
-import { Service } from '../../types';
 import { ActionsMenu } from '../ActionsMenu';
 
 import s from './LogCard.module.pcss';
@@ -29,16 +27,10 @@ import s from './LogCard.module.pcss';
 type Props = {
     entry: NormalizedQueryLogItem;
     filters: Filter[];
-    services: Service[];
     whitelistFilters: Filter[];
     onRowClick: (entry: NormalizedQueryLogItem) => void;
     onBlock: (domain: string) => void;
     onUnblock: (domain: string) => void;
-    onBlockClient: (domain: string, client: string) => void;
-    onDisallowClient: (ip: string) => void;
-    onAddPersistentClient: (clientId: string) => void;
-    persistentClientIds: string[];
-    persistentClientsLoaded: boolean;
 };
 
 export const LogCard = (props: Props) => {
@@ -55,8 +47,6 @@ export const LogCard = (props: Props) => {
             filters: props.filters,
             reason: props.entry.reason,
             rules: props.entry.rules ?? [],
-            serviceName: props.entry.service_name || props.entry.serviceName,
-            services: props.services,
             whitelistFilters: props.whitelistFilters,
         });
     const statusLabel = () => getQueryStatusLabel(statusKey());
@@ -109,18 +99,9 @@ export const LogCard = (props: Props) => {
                     <div class={s.actions} onClick={(e) => e.stopPropagation()}>
                         <ActionsMenu
                             domain={props.entry.domain}
-                            client={props.entry.client}
-                            clientId={props.entry.client_id || props.entry.client}
                             onBlock={props.onBlock}
                             onUnblock={props.onUnblock}
-                            onBlockClient={props.onBlockClient}
-                            onDisallowClient={() => props.onDisallowClient(props.entry.client)}
-                            onAddPersistentClient={props.onAddPersistentClient}
                             isBlocked={isBlockedReason(props.entry.reason)}
-                            showAddPersistentClient={
-                                props.persistentClientsLoaded &&
-                                !hasPersistentClient(props.entry, props.persistentClientIds)
-                            }
                             testIdPrefix="query-log-card"
                         />
                     </div>

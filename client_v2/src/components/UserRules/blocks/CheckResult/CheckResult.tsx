@@ -5,9 +5,7 @@ import intl from 'panel/common/intl';
 import theme from 'panel/lib/theme';
 import { Icon } from 'panel/common/ui/Icon';
 import { filteringState } from 'panel/stores/filtering';
-import { servicesState } from 'panel/stores/services';
 import { FILTERED_STATUS } from 'panel/helpers/constants';
-import { getServiceName } from 'panel/helpers/helpers';
 
 import { getCheckResultMeta } from '../../checkResultHelpers';
 import { type CheckResultData, type ResultActionKind } from '../../types';
@@ -82,11 +80,6 @@ export const CheckResult = (props: Props) => {
         (props.checkResult.ip_addrs && props.checkResult.ip_addrs.length > 0
             ? props.checkResult.ip_addrs.join(', ')
             : null);
-    const normalizedServiceName = () =>
-        props.checkResult.service_name
-            ? getServiceName(servicesState.allServices, props.checkResult.service_name) ||
-              props.checkResult.service_name
-            : null;
     const hiddenActionKindSet = () => new Set(props.hiddenActionKinds || []);
 
     const reasonContent = () => {
@@ -154,14 +147,6 @@ export const CheckResult = (props: Props) => {
                         </div>
                     </Show>
 
-                    <Show when={normalizedServiceName()}>
-                        <div class={s.resultItem}>
-                            {intl.getMessage('user_rules_service', {
-                                service: normalizedServiceName(),
-                            })}
-                        </div>
-                    </Show>
-
                     <Show when={meta().tone !== 'rewritten' && meta().rule}>
                         <div class={s.resultItem}>
                             {intl.getMessage('user_rules_rule', { rule: meta().rule })}
@@ -170,13 +155,9 @@ export const CheckResult = (props: Props) => {
 
                     <Show when={meta().tone === 'rewritten' && redirectedValue()}>
                         <div class={s.resultItem}>
-                            {props.checkResult.reason === FILTERED_STATUS.FILTERED_SAFE_SEARCH
-                                ? intl.getMessage('user_rules_redirected_to', {
-                                      value: redirectedValue(),
-                                  })
-                                : intl.getMessage('user_rules_rewritten_to', {
-                                      value: redirectedValue(),
-                                  })}
+                            {intl.getMessage('user_rules_rewritten_to', {
+                                value: redirectedValue(),
+                            })}
                         </div>
                     </Show>
 
