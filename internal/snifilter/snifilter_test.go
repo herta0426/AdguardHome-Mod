@@ -52,13 +52,12 @@ func TestParams_Validate(t *testing.T) {
 		params  Params
 		wantErr bool
 	}{{
-		name:    "disabled",
+		name:    "empty_ports",
 		params:  Params{},
-		wantErr: false,
+		wantErr: true,
 	}, {
 		name: "valid",
 		params: Params{
-			Enabled:  true,
 			QueueNum: 7,
 			Ports:    []uint16{443},
 			UIDs:     []string{"1000", "10000-19999"},
@@ -67,39 +66,34 @@ func TestParams_Validate(t *testing.T) {
 	}, {
 		name: "no_ports",
 		params: Params{
-			Enabled: true,
-			Ports:   nil,
+			Ports: nil,
 		},
 		wantErr: true,
 	}, {
 		name: "zero_port",
 		params: Params{
-			Enabled: true,
-			Ports:   []uint16{0},
+			Ports: []uint16{0},
 		},
 		wantErr: true,
 	}, {
 		name: "bad_uid",
 		params: Params{
-			Enabled: true,
-			Ports:   []uint16{443},
-			UIDs:    []string{"root"},
+			Ports: []uint16{443},
+			UIDs:  []string{"root"},
 		},
 		wantErr: true,
 	}, {
 		name: "bad_uid_range",
 		params: Params{
-			Enabled: true,
-			Ports:   []uint16{443},
-			UIDs:    []string{"100-1"},
+			Ports: []uint16{443},
+			UIDs:  []string{"100-1"},
 		},
 		wantErr: true,
 	}, {
 		name: "bad_uid_range_empty",
 		params: Params{
-			Enabled: true,
-			Ports:   []uint16{443},
-			UIDs:    []string{"-100"},
+			Ports: []uint16{443},
+			UIDs:  []string{"-100"},
 		},
 		wantErr: true,
 	}}
@@ -190,6 +184,77 @@ func TestParsePacket(t *testing.T) {
 			assert.Equal(t, uint32(ack), p.ack)
 			assert.Equal(t, uint8(tcpFlagACK), p.flags)
 			assert.Equal(t, []byte(data), p.payload)
+		})
+	}
+}
+
+// TestFilter_isTLSHandshake tests the fast path that releases the packets that
+// cannot begin a TLS ClientHello.
+func TestFilter_isTLSHandshake(t *testing.T) {
+	t.Parallel()
+
+	f := &Filter{ports: []uint16{443, 8443}}
+
+	src := netip.MustParseAddrPort("10.0.0.1:12345")
+	dst443 := netip.MustParseAddrPort("192.0.2.1:443")
+	dst8443 := netip.MustParseAddrPort("192.0.2.1:8443")
+	dst80 := netip.MustParseAddrPort("192.0.2.1:80")
+	v6Src := netip.MustParseAddrPort("[2001:db8::1]:12345")
+	v6Dst := netip.MustParseAddrPort("[2001:db8::2]:8443")
+
+	hello := []byte{0x16, 0x03, 0x01, 0x00, 0x00, 0x01}
+
+	testCases := []struct {
+		name string
+		pkt  []byte
+		want bool
+	}{{
+		name: "ipv4_hello",
+		pkt:  tcpPacket4(src, dst443, 1, 1, tcpFlagACK, hello),
+		want: true,
+	}, {
+		name: "ipv4_hello_8443",
+		pkt:  tcpPacket4(src, dst8443, 1, 1, tcpFlagACK, hello),
+		want: true,
+	}, {
+		name: "ipv6_hello",
+		pkt:  tcpPacket6(v6Src, v6Dst, 1, 1, tcpFlagACK, hello),
+		want: true,
+	}, {
+		name: "other_port",
+		pkt:  tcpPacket4(src, dst80, 1, 1, tcpFlagACK, hello),
+		want: false,
+	}, {
+		name: "udp",
+		pkt:  withByte(tcpPacket4(src, dst443, 1, 1, tcpFlagACK, hello), 9, 17),
+		want: false,
+	}, {
+		name: "http",
+		pkt:  tcpPacket4(src, dst443, 1, 1, tcpFlagACK, []byte("GET / HTTP/1.1")),
+		want: false,
+	}, {
+		name: "empty_payload",
+		pkt:  tcpPacket4(src, dst443, 1, 1, tcpFlagACK, nil),
+		want: false,
+	}, {
+		name: "short",
+		pkt:  []byte{0x45},
+		want: false,
+	}, {
+		name: "empty",
+		pkt:  nil,
+		want: false,
+	}, {
+		name: "not_hello",
+		pkt:  tcpPacket4(src, dst443, 1, 1, tcpFlagACK, []byte{0x16, 0x03, 0x01, 0x00, 0x00, 0x02}),
+		want: false,
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, f.isTLSHandshake(tc.pkt))
 		})
 	}
 }

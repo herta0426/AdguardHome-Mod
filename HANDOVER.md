@@ -77,7 +77,7 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 
 ### 2.6 自己加的功能：SNI 阻断（`sni_filter`）
 
-这是本项目第一个「不只是做减法」的功能，默认关闭，只在 Linux 上生效。
+这是本项目第一个「不只是做减法」的功能，只在 Linux 上生效，跟随强力模式。
 
 **解决什么问题。** DNS 过滤看不到两类流量：应用自己走 DoH（443 端口，绕开系统 DNS），以及把 IP 写死在代码里的 Ad SDK。这两种连接的 ClientHello 里 SNI 是明文，所以能在连接建立时按域名拦掉，用的是**同一套过滤规则**，不需要另外维护清单。
 
@@ -91,7 +91,7 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 **强力模式。** `filtering.blocking_mode: strong`（DNS 设置页里叫「强力模式」）把上面这套和 DNS 拦截合成一个开关：
 
 - DNS 半边在 `internal/dnsforward/msg.go` 的 `genForBlockingMode` 里加了一个分支，直接调已有的 `NewMsgNODATA`，也就是 NOERROR + 空 answer + SOA。A/AAAA/HTTPS 走这个分支，其它 qtype 本来就走 NODATA。
-- SNI 半边由 `internal/home/dns.go` 的 `syncSNIFilter` 负责：只要 `sni_filter.enabled` 为真**或**当前拦截模式是 strong，就确保 SNI 过滤在跑，否则确保它停掉。`config.Filtering` 的拦截模式是运行时可变的值，所以判断要读 `globalContext.filters.BlockingMode()`，不要读 `config.Filtering.BlockingMode`。
+- SNI 半边由 `internal/home/dns.go` 的 `syncSNIFilter` 负责：只要当前拦截模式是 strong 就确保 SNI 过滤（NFQUEUE）在跑，否则确保它停掉。这里**没有单独的开关**：`sni_filter` 段里没有 `enabled` 键，代码里也没有「因为配置没开而跳过注册」的路径。`config.Filtering` 的拦截模式是运行时可变的值，所以判断要读 `globalContext.filters.BlockingMode()`，不要读 `config.Filtering.BlockingMode`。
 - `syncSNIFilter` 在两个地方被调用：`initDNS` 末尾（启动）和 `defaultConfigModifier.Apply`（每次配置写盘后，`/control/dns_config` 会走到这里）。所以「在界面里切成强力模式」不需要重启，DNS 半边立即生效、RST 半边在保存配置时同步启停。
 - 启动/停止的临界区由 `homeContext.sniLock` 保护；`syncSNIFilter` 在 `globalContext.filters` 或 `globalContext.dnsServer` 为空时直接返回，避免在关机过程中把规则又装回去。
 
@@ -117,14 +117,19 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 
 ```yaml
 sni_filter:
-  enabled: false
   queue_num: 7          # 别用 0；脚本也从这里读队列号
-  ports: [443, 8443]    # 只描述规则，AdGuardHome 自己不装规则
-  uids: []              # 同上；例如 ["10000-19999"]，空表示所有进程
-  drop_quic: false      # 同上；打开则由脚本 REJECT UDP 443，逼 HTTP/3 回退 TCP
+  ports: [443, 8443]    # 用于快速短路：只有目的端口在列表里的包才进入解析
+  uids: []              # 描述性字段；例如 ["10000-19999"]，空表示所有进程
+  drop_quic: false      # 描述性字段；打开则由脚本 REJECT UDP 443，逼 HTTP/3 回退 TCP
 ```
 
-`filtering.blocking_mode: strong` 时上面这一段自动生效，不需要把 `enabled` 打开。
+`filtering.blocking_mode: strong` 时上面这一段自动生效；切成别的模式则把队列停掉。
+
+**吞吐加固（事件驱动）。** `internal/snifilter/{firewall_linux.go,clienthello.go,snifilter.go}` 做了三件事，让 SNI 拦截在极端流量下不容易被拖垮：
+
+1. **快速短路**：NFQUEUE 回调先做纯字节比对（IP 头、协议、目的端口、TCP 头、TLS 记录头与 ClientHello 类型），任何一步不满足立刻放行，零分配、不写日志；只有可能带 SNI 的包才进入连接表。`Filter.pktPool` 与 `helloBufPool` 复用包结构与握手缓冲。
+2. **无条件注册**：如上所述，strong 模式下不存在因为 `enabled` 而跳过注册的路径。
+3. **队列丢失自愈**：注册队列后用 `epoll` 监听 netlink socket 的 `EPOLLHUP`/`EPOLLERR`（epoll 不可用时退回 `poll`），内核断开队列时立刻关闭旧 socket 并重新注册，事件驱动、不轮询；关机会先写 eventfd 唤醒等待再退出。
 
 **规则由外部脚本维护**：AdGuardHome 只开 NFQUEUE、读包、发 RST，从不安装/清理/自愈 iptables 规则（早先为同时支持两种模式加过 `manage_rules` 开关，现已删除——内核没有 `xt_multiport` 时它自己装规则会失败，把规则完全交给脚本就没有这个问题）。Magisk 模块走的就是这条：`scripts/iptables.sh` 的 `rebuild_sni` 维护 `filter` 表里的 `AGH_SNI` 链（`-o lo -j RETURN` + 逐端口 `-p tcp --dport N -m owner --uid-owner … -m connbytes … -j NFQUEUE --queue-num N --queue-bypass`，v4/v6 各一份），5 秒守护循环里用 `-C` 检查、缺了就重建；端口来自模块自己的 `scripts/config.prop`（`sni_ports`），队列号从 `AdGuardHome.yaml` 的 `sni_filter.queue_num` 读，避免两边写死不同值。配置里的 `ports`/`uids`/`drop_quic` 现在只是描述性字段，AdGuardHome 不使用，保留是为了兼容旧配置。
 

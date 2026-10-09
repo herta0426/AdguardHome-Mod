@@ -164,8 +164,8 @@ filtering:
   #   default — 被 Adblock 规则拦截时回零 IP（A 记录 0.0.0.0；AAAA 记录 ::），被
   #             /etc/hosts 规则拦截时回规则里指定的 IP。
   #   strong  — 强力模式，本 Mod 新增：被拦截的域名回空解析（NODATA，NOERROR + SOA），
-  #             同时对命中规则的 TLS 连接注入 RST，并自动打开下面的 sni_filter 段，
-  #             不需要另外把 sni_filter.enabled 打开。DNS 那一半能直接生效，RST 那一半
+  #             同时对命中规则的 TLS 连接注入 RST，并自动启用下面的 sni_filter（没有
+  #             单独的开关，只有强力模式才会开队列）。DNS 那一半能直接生效，RST 那一半
   #             需要 root 与内核支持 NFQUEUE，不满足时只在日志里报错、不影响 DNS。
   # 其它模式（REFUSED / NXDOMAIN / NULL IP / 自定义 IP）的后端实现还在，但界面上选不了。
   blocking_mode: default
@@ -188,7 +188,8 @@ filtering:
   safebrowsing_enabled: false
   protection_enabled: true
 
-# SNI 阻断，本 Mod 新增，只在 Linux 上生效，默认关闭。
+# SNI 阻断，本 Mod 新增，只在 Linux 上生效，跟随上面的强力模式：只有把
+# filtering.blocking_mode 设为 strong 时才会注册 NFQUEUE、读取 ClientHello。
 #
 # DNS 过滤有一个洞：应用自己走 DoH（443 端口，绕开系统 DNS）或者把 IP 写死在
 # 代码里时，DNS 层看不到。这段专门补这个洞——在 filter 表的 OUTPUT 链上用
@@ -197,10 +198,8 @@ filtering:
 #
 # 要求：以 root 运行（Magisk 模块本来就是），内核编了 connbytes 与 NFQUEUE。
 # 缺任何一个只会在日志里报错，不会影响 DNS 服务本身。
-# 另外，把上面的 filtering.blocking_mode 设为 strong（强力模式）时，这一段会自动
-# 生效，不需要把 enabled 打开。
-# 直接改这一段的 enabled 需要重启 AdGuardHome 才生效；改成 strong 拦截模式不用重启，
-# 程序在切换时会自己启停这里的规则。
+# 在界面里把拦截模式切成 strong 时，DNS 那一半立刻生效，RST 那一半会在配置保存时
+# 同步启停，不用重启。改成别的模式则会把队列停掉。
 #
 # 每条连接的 SNI 都会写进查询日志（放行的也写），用 SNI 专用的拦截原因与 DNS 查询区分：
 # 被拦的显示成「已阻止（SNI）」，放行的显示成「已处理（SNI）」，命中的规则
@@ -218,8 +217,6 @@ sni_filter:
   # 只检查这些 UID（或 UID 范围，如 "10000-19999"）的进程；空数组表示所有进程。
   # 手机上一般填应用 UID 段，这样代理模块与 AdGuardHome 自身的出站不会被抓。
   uids: []
-  # 是否启用。默认关闭；把拦截模式设为 strong（强力模式）时不需要打开这一项。
-  enabled: false
   # HTTP/3 走 UDP 443，SNI 是加密的，拦不住。打开这一项会 REJECT 掉 UDP 443，
   # 逼客户端回退到 TCP，代价是没有 HTTP/3。
   drop_quic: false
@@ -228,8 +225,9 @@ sni_filter:
   # config.prop 里，队列号从这里读）。外部脚本必须带 --queue-bypass，否则
   # AdGuardHome 没跑时 443 会卡住。
   #
-  # 上面三项（ports / uids / drop_quic）只是对规则应有的样子做描述，AdGuardHome
-  # 自己不再据此安装规则，保留它们是为了兼容旧配置。
+  # ports 会被 AdGuardHome 用来做快速短路：只有目的端口在列表里的包才会进入解析。
+  # uids / drop_quic 只是对规则应有的样子做描述，AdGuardHome 自己不再据此安装规则，
+  # 保留它们是为了兼容旧配置。
 
 # 客户端的持久化配置。Mod 删掉了「客户端设置」界面，但这一段与 /control/clients
 # 接口还保留着（第三方管理器要读）；官方版本写的 safe_search / blocked_services /

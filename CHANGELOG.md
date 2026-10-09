@@ -8,7 +8,8 @@
 
 ### 新增
 
-- **强力模式**（`filtering.blocking_mode: strong`）：被拦截的域名回**空解析（NODATA）**，同时对命中规则的 TLS 连接注入 RST。也就是把上面那条 SNI 阻断与 DNS 拦截合成一个开关：应用自己走 DoH（443 端口）或直连 IP 时本来绕过 DNS 过滤，现在也会被 RST 断掉。选这个模式会自动打开 SNI 过滤，不需要另外配 `sni_filter.enabled`；在界面里切换时，DNS 那一半立刻生效，RST 那一半会在配置保存时同步启停，不用重启。实现见 `internal/dnsforward/msg.go` 的 `BlockingModeStrong` 分支与 `internal/home/dns.go` 的 `syncSNIFilter`。
+- **强力模式**（`filtering.blocking_mode: strong`）：被拦截的域名回**空解析（NODATA）**，同时对命中规则的 TLS 连接注入 RST。也就是把上面那条 SNI 阻断与 DNS 拦截合成一个开关：应用自己走 DoH（443 端口）或直连 IP 时本来绕过 DNS 过滤，现在也会被 RST 断掉。选这个模式会自动启用 SNI 过滤——`sni_filter` 段里已经没有 `enabled` 键，代码里也没有因为配置没开而跳过注册的路径；在界面里切换时，DNS 那一半立刻生效，RST 那一半会在配置保存时同步启停，不用重启。实现见 `internal/dnsforward/msg.go` 的 `BlockingModeStrong` 分支与 `internal/home/dns.go` 的 `syncSNIFilter`。
+- **SNI 拦截加固**（`internal/snifilter/`）：NFQUEUE 回调新增**快速短路**——只做纯字节比对，非 ClientHello 包零分配、不写日志地立刻放行，只有可能带 SNI 的包才进连接表；包结构与握手缓冲用 `sync.Pool` 复用。**删除 `sni_filter.enabled`**：strong 模式下无条件注册队列，配置与代码里都不再有「因为没开而跳过注册」的路径。新增**队列丢失自愈**：用 `epoll` 监听 netlink socket 的 `EPOLLHUP`/`EPOLLERR`（不可用时退回 `poll`），内核断开队列时立刻重建并重新注册，事件驱动、不轮询。
 - **SNI 进查询日志**：每条解析出 SNI 的 TLS 连接都会写进查询日志，放行的也写——域名就是 SNI，能看到实际连了哪些域名。记录的原因与 DNS 查询分开：被拦的是 `FilteredSNI`（界面显示「已阻止（SNI）」，同时仍归入「已阻止」筛选），放行的是 `NotFilteredSNI`（界面显示「已处理（SNI）」），两者都带上命中的规则——命中允许规则的 TLS 连接虽然不再显示成「允许项」，规则本身仍写在详情里。这样一眼就能分辨哪些行是 TLS 连接、哪些是 DNS 查询；接口侧也可以用 `reason=12`（被拦）与 `reason=13`（放行）单独筛。SNI 记录还带**连接的目标地址**（`destination`，形如 `192.0.2.1:443`），补上 DNS 查询本来就没有的那一维——DNS 侧只知道域名，不知道应用最终连到哪个 IP，分析时有用。主日志不再逐条打印 SNI，只在启动、停止与出错时写。
 - **规则由外部脚本维护**：AdGuardHome 不再安装、清理 iptables 规则，只开 NFQUEUE、读包、发 RST；把包送进 `AGH_SNI` 链的规则交给外部脚本（Magisk 模块的 `iptables.sh` 就是这么接的，逐端口建规则，`--queue-bypass` 必带，队列号从 `sni_filter.queue_num` 读）。因此 `sni_filter` 里的 `ports` / `uids` / `drop_quic` 只是描述性字段，AdGuardHome 不再使用它们，保留仅为兼容旧配置；早期为同时支持两种模式而加的 `manage_rules` 开关已删除。
 - DNS 设置页的「拦截模式」重新出现两个选项：默认与强力模式（其它模式的后端实现仍在，界面不提供）。语言键 `strong` / `blocking_mode_strong` 见 `client/src/__locales/`。

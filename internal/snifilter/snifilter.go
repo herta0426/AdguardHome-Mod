@@ -62,6 +62,9 @@ const (
 
 	// ipv6HeaderLen is the length of an IPv6 header.
 	ipv6HeaderLen = 40
+
+	// ipProtoTCP is the IP protocol number of TCP.
+	ipProtoTCP = 6
 )
 
 // Errors returned by [parsePacket].
@@ -84,9 +87,6 @@ type Params struct {
 	// means all processes.
 	UIDs []string `yaml:"uids"`
 
-	// Enabled defines whether the SNI filtering is enabled.
-	Enabled bool `yaml:"enabled"`
-
 	// DropQUIC defines whether to reject the UDP traffic to Ports in order to
 	// make the clients fall back to TCP.  The server names in QUIC are
 	// encrypted, so the SNI filter cannot inspect it.
@@ -95,10 +95,6 @@ type Params struct {
 
 // Validate returns an error if p isn't valid.
 func (p *Params) Validate() (err error) {
-	if !p.Enabled {
-		return nil
-	}
-
 	if len(p.Ports) == 0 {
 		return errors.Error("ports: empty")
 	}
@@ -197,6 +193,10 @@ type Filter struct {
 	wg     sync.WaitGroup
 	mu     sync.Mutex
 
+	// pktPool reuses the parsed-packet structures between the packets that
+	// reach the connection table, keeping the allocation rate low.
+	pktPool sync.Pool
+
 	// platform is the platform-specific state of the filter.
 	platform
 }
@@ -240,6 +240,7 @@ func New(c *Config) (f *Filter, err error) {
 		queueNum: c.QueueNum,
 		dropQUIC: c.DropQUIC,
 	}
+	f.pktPool.New = func() (v any) { return &packet{} }
 
 	return f, nil
 }
@@ -552,43 +553,126 @@ func resetSegments(p *packet) (toClient, toServer rstSegment) {
 	return toClient, toServer
 }
 
+// isTLSHandshake checks whether b, a raw IPv4 or IPv6 packet, may carry the
+// beginning of a TLS ClientHello sent to one of the inspected ports.  It is
+// the fast path that runs before the general parser: it only compares the
+// bytes that are already there and never allocates, so the packets that cannot
+// contain a server name are released without touching the connection table.
+//
+// The checks are, in order: the IP header, the TCP protocol number, the
+// destination port, the TCP header, and the first bytes of the TLS record.
+// b must contain the whole packet, as it comes from the NFQUEUE.
+func (f *Filter) isTLSHandshake(b []byte) (ok bool) {
+	if len(b) < 1 {
+		return false
+	}
+
+	var ipHdrLen int
+	switch b[0] >> 4 {
+	case 4:
+		if len(b) < ipv4HeaderLen || b[9] != ipProtoTCP {
+			return false
+		}
+
+		// Only the first fragment carries the TCP header, and the rest of the
+		// packet cannot be inspected before it is reassembled.
+		if binary.BigEndian.Uint16(b[6:8])&0x1fff != 0 {
+			return false
+		}
+
+		ipHdrLen = int(b[0]&0x0f) * 4
+		if ipHdrLen < ipv4HeaderLen {
+			return false
+		}
+	case 6:
+		if len(b) < ipv6HeaderLen || b[6] != ipProtoTCP {
+			return false
+		}
+
+		ipHdrLen = ipv6HeaderLen
+	default:
+		return false
+	}
+
+	if len(b) < ipHdrLen+tcpHeaderLen {
+		return false
+	}
+	tcp := b[ipHdrLen:]
+
+	if !f.isInspectedPort(binary.BigEndian.Uint16(tcp[2:4])) {
+		return false
+	}
+
+	tcpHdrLen := int(tcp[12]>>4) * 4
+	if tcpHdrLen < tcpHeaderLen || len(tcp) < tcpHdrLen {
+		return false
+	}
+	payload := tcp[tcpHdrLen:]
+
+	// A TLS record containing a ClientHello starts with the handshake record
+	// type, the TLS major version, and the ClientHello handshake type.
+	return len(payload) >= 6 &&
+		payload[0] == tlsRecordHandshake &&
+		payload[1] == tlsVersionMajor &&
+		payload[5] == tlsHandshakeClientHello
+}
+
+// isInspectedPort returns true if port is one of the ports the filter looks
+// at.
+func (f *Filter) isInspectedPort(port uint16) (ok bool) {
+	return slices.Contains(f.ports, port)
+}
+
 // parsePacket parses a raw IPv4 or IPv6 packet and returns its TCP part.  b
 // must contain the whole packet.
 func parsePacket(b []byte) (p *packet, err error) {
+	p = &packet{}
+	err = parsePacketInto(b, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+// parsePacketInto parses a raw IPv4 or IPv6 packet into p.  b must contain the
+// whole packet.  p must not be nil and is fully overwritten.
+func parsePacketInto(b []byte, p *packet) (err error) {
+	*p = packet{}
+
 	if len(b) < 1 {
-		return nil, errNotIPPacket
+		return errNotIPPacket
 	}
 
 	switch b[0] >> 4 {
 	case 4:
-		return parseIPv4Packet(b)
+		return parseIPv4PacketInto(b, p)
 	case 6:
-		return parseIPv6Packet(b)
+		return parseIPv6PacketInto(b, p)
 	default:
-		return nil, errNotIPPacket
+		return errNotIPPacket
 	}
 }
 
-// parseIPv4Packet parses an IPv4 packet and returns its TCP part.
-func parseIPv4Packet(b []byte) (p *packet, err error) {
-	const minHeaderLen = 20
-	if len(b) < minHeaderLen {
-		return nil, errNotIPPacket
+// parseIPv4PacketInto parses an IPv4 packet into p.
+func parseIPv4PacketInto(b []byte, p *packet) (err error) {
+	if len(b) < ipv4HeaderLen {
+		return errNotIPPacket
 	}
 
-	if b[9] != 6 {
-		return nil, errNotTCPPacket
+	if b[9] != ipProtoTCP {
+		return errNotTCPPacket
 	}
 
 	// Don't try to parse the fragments that don't contain the TCP header.
 	fragOffset := binary.BigEndian.Uint16(b[6:8]) & 0x1fff
 	if fragOffset != 0 {
-		return nil, errNotTCPPacket
+		return errNotTCPPacket
 	}
 
 	headerLen := int(b[0]&0x0f) * 4
-	if headerLen < minHeaderLen || headerLen > len(b) {
-		return nil, errNotIPPacket
+	if headerLen < ipv4HeaderLen || headerLen > len(b) {
+		return errNotIPPacket
 	}
 
 	msgLen := int(binary.BigEndian.Uint16(b[2:4]))
@@ -596,29 +680,27 @@ func parseIPv4Packet(b []byte) (p *packet, err error) {
 		msgLen = len(b)
 	}
 	if headerLen > msgLen {
-		return nil, errNotIPPacket
+		return errNotIPPacket
 	}
 
-	var src, dst netip.Addr
-	src = netip.AddrFrom4([4]byte(b[12:16]))
-	dst = netip.AddrFrom4([4]byte(b[16:20]))
+	src := netip.AddrFrom4([4]byte(b[12:16]))
+	dst := netip.AddrFrom4([4]byte(b[16:20]))
 
-	return parseTCPPacket(b[headerLen:msgLen], src, dst)
+	return parseTCPPacketInto(b[headerLen:msgLen], src, dst, p)
 }
 
-// parseIPv6Packet parses an IPv6 packet and returns its TCP part.  The packets
-// with extension headers are not parsed and are considered not TCP.
-func parseIPv6Packet(b []byte) (p *packet, err error) {
-	const headerLen = 40
-	if len(b) < headerLen {
-		return nil, errNotIPPacket
+// parseIPv6PacketInto parses an IPv6 packet into p.  The packets with
+// extension headers are not parsed and are considered not TCP.
+func parseIPv6PacketInto(b []byte, p *packet) (err error) {
+	if len(b) < ipv6HeaderLen {
+		return errNotIPPacket
 	}
 
-	if b[6] != 6 {
-		return nil, errNotTCPPacket
+	if b[6] != ipProtoTCP {
+		return errNotTCPPacket
 	}
 
-	msgLen := headerLen + int(binary.BigEndian.Uint16(b[4:6]))
+	msgLen := ipv6HeaderLen + int(binary.BigEndian.Uint16(b[4:6]))
 	if msgLen > len(b) {
 		msgLen = len(b)
 	}
@@ -626,27 +708,26 @@ func parseIPv6Packet(b []byte) (p *packet, err error) {
 	src := netip.AddrFrom16([16]byte(b[8:24]))
 	dst := netip.AddrFrom16([16]byte(b[24:40]))
 
-	return parseTCPPacket(b[headerLen:msgLen], src, dst)
+	return parseTCPPacketInto(b[ipv6HeaderLen:msgLen], src, dst, p)
 }
 
-// parseTCPPacket parses a TCP packet and returns it.
-func parseTCPPacket(b []byte, src, dst netip.Addr) (p *packet, err error) {
-	const minHeaderLen = 20
-	if len(b) < minHeaderLen {
-		return nil, errNotTCPPacket
+// parseTCPPacketInto parses a TCP packet into p.
+func parseTCPPacketInto(b []byte, src, dst netip.Addr, p *packet) (err error) {
+	if len(b) < tcpHeaderLen {
+		return errNotTCPPacket
 	}
 
 	headerLen := int(b[12]>>4) * 4
-	if headerLen < minHeaderLen || headerLen > len(b) {
-		return nil, errNotTCPPacket
+	if headerLen < tcpHeaderLen || headerLen > len(b) {
+		return errNotTCPPacket
 	}
 
-	return &packet{
-		src:     netip.AddrPortFrom(src, binary.BigEndian.Uint16(b[0:2])),
-		dst:     netip.AddrPortFrom(dst, binary.BigEndian.Uint16(b[2:4])),
-		seq:     binary.BigEndian.Uint32(b[4:8]),
-		ack:     binary.BigEndian.Uint32(b[8:12]),
-		flags:   b[13],
-		payload: b[headerLen:],
-	}, nil
+	p.src = netip.AddrPortFrom(src, binary.BigEndian.Uint16(b[0:2]))
+	p.dst = netip.AddrPortFrom(dst, binary.BigEndian.Uint16(b[2:4]))
+	p.seq = binary.BigEndian.Uint32(b[4:8])
+	p.ack = binary.BigEndian.Uint32(b[8:12])
+	p.flags = b[13]
+	p.payload = b[headerLen:]
+
+	return nil
 }

@@ -525,7 +525,6 @@ var config = &configuration{
 		},
 	},
 	SNIFilter: snifilter.Params{
-		Enabled:  false,
 		QueueNum: defaultSNIQueueNum,
 		Ports:    []uint16{443, 8443},
 		UIDs:     []string{},
@@ -929,8 +928,8 @@ func (cm *defaultConfigModifier) Apply(ctx context.Context) {
 		cm.logger.ErrorContext(ctx, "writing config", slogutil.KeyError, err)
 	}
 
-	// The SNI filtering follows both the sni_filter section and the blocking
-	// mode, so it has to be started or stopped along with them.
+	// The SNI filtering follows the blocking mode, so it has to be started or
+	// stopped along with it.
 	syncSNIFilter(ctx, cm.logger)
 }
 

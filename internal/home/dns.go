@@ -142,20 +142,19 @@ func initDNS(
 }
 
 // sniFilterActive returns true if the SNI filtering must be running right now.
-// It's required by the sni_filter configuration section, or by the strong
-// blocking mode, which resets the TLS connections as well.
+// The strong blocking mode resets the TLS connections along with the DNS
+// answers, so the queue is registered whenever that mode is selected.  There
+// is no separate switch: nothing in the configuration can turn the queue off
+// while the strong mode is on.
 func sniFilterActive() (ok bool) {
-	if config.SNIFilter.Enabled {
-		return true
+	filters := globalContext.filters
+	if filters == nil {
+		return false
 	}
 
-	if filters := globalContext.filters; filters != nil {
-		mode, _, _ := filters.BlockingMode()
+	mode, _, _ := filters.BlockingMode()
 
-		return mode == filtering.BlockingModeStrong
-	}
-
-	return false
+	return mode == filtering.BlockingModeStrong
 }
 
 // syncSNIFilter starts or stops the SNI filtering module according to the

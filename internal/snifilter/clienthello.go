@@ -3,6 +3,7 @@ package snifilter
 import (
 	"encoding/binary"
 	"strings"
+	"sync"
 
 	"github.com/AdguardTeam/golibs/errors"
 )
@@ -15,6 +16,9 @@ const (
 
 	// tlsHandshakeClientHello is the TLS handshake type of ClientHello.
 	tlsHandshakeClientHello = 0x01
+
+	// tlsVersionMajor is the major version of the TLS records.
+	tlsVersionMajor = 0x03
 
 	// tlsExtServerName is the number of the server_name extension.
 	tlsExtServerName = 0x0000
@@ -42,6 +46,17 @@ var (
 	errNeedMore = errors.Error("not enough data")
 )
 
+// helloBufPool reuses the buffers that accumulate the handshake data across
+// the TLS records, keeping the parsing of the connections that reach the queue
+// allocation-free in the common case.
+var helloBufPool = sync.Pool{
+	New: func() (v any) {
+		b := make([]byte, 0, 2048)
+
+		return &b
+	},
+}
+
 // sniffSNI extracts the server name from the beginning of a TLS stream.  data
 // must contain the start of the connection, and may be incomplete.
 //
@@ -54,7 +69,12 @@ var (
 // server name, for example when the client uses ECH or connects by an IP
 // address.
 func sniffSNI(data []byte) (name string, err error) {
-	var handshake []byte
+	bufp := helloBufPool.Get().(*[]byte)
+	handshake := (*bufp)[:0]
+	defer func() {
+		*bufp = handshake[:0]
+		helloBufPool.Put(bufp)
+	}()
 
 	for off := 0; ; {
 		if len(data)-off < tlsRecordHeaderLen {

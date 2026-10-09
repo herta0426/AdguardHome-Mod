@@ -73,7 +73,7 @@ DNS 服务、过滤规则、查询日志、客户端管理、加密和 REST API 
 自己加的功能：
 
 - **强力模式**（`filtering.blocking_mode: strong`，DNS 设置页里可以选）。被拦截的域名回**空解析（NODATA）**，同时对命中规则的 TLS 连接注入 RST。应用自己走 DoH（443 端口，绕开系统 DNS）或把 IP 写死在代码里时，DNS 过滤看不到这些连接，强力模式把这个洞一起补上。选这个模式会自动打开下面的 SNI 阻断，不需要另外配置；在界面里切换即时生效，不用重启。
-- **SNI 阻断**（`sni_filter` 配置段，默认关闭，仅 Linux）。在 `filter` 表的 `OUTPUT` 链上用 NFQUEUE 读取每条 TLS 连接开头的 ClientHello（明文），取出 SNI，命中过滤规则就注入 TCP RST，让连接在十几毫秒内失败。用的是**同一套过滤规则**，不需要另外维护清单。每条连接的 SNI 都会记进**查询日志**（放行的也在），被拦的显示「已阻止（SNI）」、放行的显示「已处理（SNI）」，两种情况都带上命中的规则。需要 root（Magisk 模块本来就以 root 运行）与内核支持 `connbytes`、`NFQUEUE`；缺任何一个只会记日志，不影响 DNS 服务。配置项与原理见 [doc/AdGuardHome.yaml.example](doc/AdGuardHome.yaml.example) 的 `sni_filter` 段与 [交接文档](HANDOVER.md) 第 2.6 节。
+- **SNI 阻断**（`sni_filter` 配置段，随强力模式启用，仅 Linux）。在 `filter` 表的 `OUTPUT` 链上用 NFQUEUE 读取每条 TLS 连接开头的 ClientHello（明文），取出 SNI，命中过滤规则就注入 TCP RST，让连接在十几毫秒内失败。NFQUEUE 回调先做纯字节快速短路，非 ClientHello 包零分配放行；队列丢失时用 `epoll` 事件驱动重建。用的是**同一套过滤规则**，不需要另外维护清单。每条连接的 SNI 都会记进**查询日志**（放行的也在），被拦的显示「已阻止（SNI）」、放行的显示「已处理（SNI）」，两种情况都带上命中的规则。需要 root（Magisk 模块本来就以 root 运行）与内核支持 `connbytes`、`NFQUEUE`；缺任何一个只会记日志，不影响 DNS 服务。配置项与原理见 [doc/AdGuardHome.yaml.example](doc/AdGuardHome.yaml.example) 的 `sni_filter` 段与 [交接文档](HANDOVER.md) 第 2.6 节。
 
 版本号使用日期，例如 `v2026-09-24`，见 `scripts/make/version.sh`。预发布在日期后面加后缀，例如 `v2026-09-25-beta`、`v2026-09-25-rc.1`；带后缀的 tag 会以「预发布」形式发布，不会抢占「最新版本」。
 
