@@ -52,11 +52,11 @@ describe('FilterUpdateModal interval', () => {
     });
 
     it('shows the disabled radio label translated', async () => {
-        await intl.changeLanguage('vi');
+        await intl.changeLanguage('zh');
         openModal(MODAL_TYPE.FILTER_UPDATE);
         render(() => <FilterUpdateModal />);
 
-        expect(screen.getByText('Vô hiệu')).toBeInTheDocument();
+        expect(screen.getByText('禁用')).toBeInTheDocument();
     });
 
     it('shows hourly radio selected when interval is 1 hour', async () => {
