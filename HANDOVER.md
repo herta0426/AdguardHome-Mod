@@ -401,15 +401,17 @@ make js-deps js-lint js-typecheck js-test js-build
 - 在 `CHANGELOG.md` 里加一条「同步上游 <版本/日期>」并写明保留与重新删除的内容。
 - 合并到 `main` → 按第 7 节发版；先在 Actions 里手跑一次试构建，产物在手机上实跑再打 tag。
 
-## 11. 上游新版前端（client_v2）：为什么不用、以后怎么迁、怎么不冲突
+## 11. 上游新版前端（client_v2）：现状、迁移记录与注意事项
+
+**现状（2026-10 起）：本 mod 已经切到 `client_v2`。** 之前不用它，是因为当时 v2 还没进 beta；AdGuardHome v1.0.0-b.1 把 `client_v2` 定为默认前端（`Makefile` 的 `CLIENT_DIR = client_v2`，`NEXTAPI = 0`，即只用新前端、不启用 `internal/next`），mod 也随之切换（路线 A：只换前端）。下面 11.3、11.4 保留为当时的决策记录与迁移清单。
 
 ### 11.1 现状：上游有两套前端、两套后端
 
 | 项目 | 我们的 fork | 上游 `master` |
 | --- | --- | --- |
-| 经典前端 | `client/`（React，package 名 `dashboard` 0.1.0），`Makefile` 里 `CLIENT_DIR = client` | 文件还在，但 Makefile 与 CI 默认都不再构建它（CI 可用 `client_dir` 输入切回） |
-| 新版前端 | 整棵删除（`client_v2/`，约 840 个文件） | `client_v2/`（SolidJS，package 名 `dashboard` 3.0.0，webpack + vitest + orval），`Makefile` 里 `CLIENT_DIR = client_v2` |
-| 新版后端 | 整棵删除（`internal/next/`，28 个文件） | `internal/next/`，靠 `NEXTAPI=1`（`scripts/make/go-build.sh` 变成 `--tags=next`）和根目录 `main_next.go`（`//go:build next`）构建 |
+| 经典前端 | `client/`（React，旧界面）还在，但已不构建、不打包 | 文件还在，但 Makefile 与 CI 默认都不再构建它（CI 可用 `client_dir` 输入切回） |
+| 新版前端 | `client_v2/`（SolidJS，package 名 `dashboard` 3.0.0，webpack + vitest + orval），`Makefile` 里 `CLIENT_DIR = client_v2` | 同上，默认构建 |
+| 新版后端 | `internal/next/` 未引入；`NEXTAPI = 0`，继续走经典 `/control/*` 与 `internal/` 里的老后端 | `internal/next/`，靠 `NEXTAPI=1`（`scripts/make/go-build.sh` 变成 `--tags=next`）和根目录 `main_next.go`（`//go:build next`）构建 |
 
 上游把默认前端切到 `client_v2` 是在提交 `09ae3ccd`（`AGDNS-3549-new-ui-edge`）；根目录 `main.go` 与 `main_next.go` 都 embed 同一个 `build/` 目录，所以「用哪套前端」和「用哪套后端」是两件可以分开决定的事。
 

@@ -19,7 +19,8 @@
 
 ### 变更
 
-- **同步上游基线到 AdGuardHome v1.0.0-b.1**（commit `73d4aab`，2026-09-30）：把上游 14 个提交合并进本 mod。Go 工具链与依赖升到 `go 1.27.1`、`dnsproxy v0.85.0`、`golibs v0.35.16`、`miekg/dns v1.1.73`、`quic-go v0.63.0` 等；后端带上上游的 ratelimit 白名单、dnscrypt 配置校验、`MsgHdr` 与 `slices.Backward` 等改动，前端带上过滤器与 tracker 数据更新。本 mod 有意保留的删减（`client_v2`、DHCP、安全搜索、已阻止的服务、加密设置，以及 `internal/configmgr` 的未使用重构）没有随合并复活。
+- **前端换成新版 SolidJS 界面（`client_v2`）**：AdGuardHome v1.0.0-b.1 起上游默认构建 `client_v2`（`Makefile` 的 `CLIENT_DIR = client_v2`，`NEXTAPI = 0`），本 mod 同步切换，只换界面不换后端——新界面继续通过 orval 从 `openapi/openapi.yaml` 生成客户端、调用经典 `/control/*` 接口。`.twosky.json` 新增 `home_v2` 项目，语言同样只留 English / 简体中文 / 繁體中文，`locales.generated.ts` 重新生成。原有删改搬到新界面：DHCP、已阻止的服务、客户端设置、加密设置（Protocols）、设置指导这几个页面连同路由与菜单一起去掉；常规设置只留查询日志与统计；DNS 设置去掉访问设置；首页去掉客户端排行与被拦截威胁/成人网站/安全搜索三个卡片。mod 的强力模式也进了新界面的拦截模式选项（同时在 `openapi` 的枚举里补上 `strong`）。
+- **同步上游基线到 AdGuardHome v1.0.0-b.1**（commit `73d4aab`，2026-09-30）：把上游 14 个提交合并进本 mod。Go 工具链与依赖升到 `go 1.27.1`、`dnsproxy v0.85.0`、`golibs v0.35.16`、`miekg/dns v1.1.73`、`quic-go v0.63.0` 等；后端带上上游的 ratelimit 白名单、dnscrypt 配置校验、`MsgHdr` 与 `slices.Backward` 等改动，前端带上过滤器与 tracker 数据更新。本 mod 有意保留的删减（DHCP、安全搜索、已阻止的服务、加密设置，以及 `internal/configmgr` 的未使用重构）没有随合并复活。
 - 配置迁移不再写入已删除功能的键：`internal/configmigrate` 的 v4、v18、v19、v21、v22、v26 不再生成或搬运 `use_global_blocked_services`、`safe_search`、`safesearch_cache_size`、`blocked_services`，而是把它们从老配置里删掉。迁移链路本身不变，老配置照旧能升到 schema 34。
 - 同步更新迁移的测试数据与单测期望值，并修正 `internal/filtering/reason.go`、`internal/home/clients.go`、`internal/querylog/` 的 `gofmt` 对齐。
 - 在线更新改用自己的更新源：新增仓库根目录的 `version.json`，`updater.DefaultVersionURL()` 指向它，发版工作流每次发版自动把它改成新版本号、发布页地址与 arm64 压缩包地址。arm64 构建默认检查更新（`--no-check-update` 可关，本地测试用的 amd64 不检查，因为不发这个包）；`--update` 也随之指向自己的版本，不会再把自己换成官方版。
