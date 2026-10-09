@@ -37,6 +37,9 @@ export type QueryReasonKey =
     | 'dns_rewrites'
     | 'error';
 
+export const isSniReason = (reason?: string): boolean =>
+    reason === FILTERED_STATUS.FILTERED_SNI || reason === FILTERED_STATUS.NOT_FILTERED_SNI;
+
 export const getQueryStatusLabel = (statusKey: Exclude<QueryStatusKey, 'all'>): string => {
     switch (statusKey) {
         case 'allowed':
@@ -101,6 +104,10 @@ export const getStatusLabel = (
             return intl.getMessage('blocked_threats');
         case FILTERED_STATUS.FILTERED_PARENTAL:
             return intl.getMessage('blocked_adult_websites');
+        case FILTERED_STATUS.FILTERED_SNI:
+            return intl.getMessage('blocked_by_sni');
+        case FILTERED_STATUS.NOT_FILTERED_SNI:
+            return intl.getMessage('allowed_by_sni');
         case FILTERED_STATUS.NOT_FILTERED_ERROR:
             return intl.getMessage('error');
         case FILTERED_STATUS.FILTERED_INVALID:
@@ -136,7 +143,11 @@ export const getStatusClassName = (reason?: string): string =>
 export const isBlockedReason = (reason?: string): boolean =>
     !!reason && reason.startsWith('Filtered');
 
-export const getProtocolName = (clientProto: string): string => {
+export const getProtocolName = (clientProto: string, reason?: string): string => {
+    if (isSniReason(reason)) {
+        return '';
+    }
+
     const key = SCHEME_TO_PROTOCOL_MAP[clientProto as keyof typeof SCHEME_TO_PROTOCOL_MAP];
     if (key) {
         return PROTOCOL_LABEL_GETTERS[key as keyof typeof PROTOCOL_LABEL_GETTERS]();
@@ -193,6 +204,10 @@ export const getQueryStatusKey = (
             return 'rewritten';
         case FILTERED_STATUS.NOT_FILTERED_NOT_FOUND:
             return 'processed';
+        case FILTERED_STATUS.FILTERED_SNI:
+            return 'blocked';
+        case FILTERED_STATUS.NOT_FILTERED_SNI:
+            return 'processed';
         case FILTERED_STATUS.NOT_FILTERED_ERROR:
         case FILTERED_STATUS.FILTERED_INVALID:
             return 'error';
@@ -235,6 +250,8 @@ export const getQueryReasonKey = (
             )
                 ? 'custom_filtering_rules'
                 : 'blocked_by_filter';
+        case FILTERED_STATUS.FILTERED_SNI:
+            return 'blocked_by_filter';
         default:
             return 'none';
     }
@@ -287,6 +304,7 @@ export const getResponseDetails = ({
 
     switch (reason) {
         case FILTERED_STATUS.FILTERED_BLACK_LIST:
+        case FILTERED_STATUS.FILTERED_SNI:
         case FILTERED_STATUS.NOT_FILTERED_WHITE_LIST: {
             const filterNames = getFilterNames(rules, filters, whitelistFilters)
                 .filter(Boolean)

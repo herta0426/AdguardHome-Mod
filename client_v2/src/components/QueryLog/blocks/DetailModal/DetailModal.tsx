@@ -15,8 +15,7 @@ import {
     getQueryReasonDetails,
     getQueryReasonLabel,
     getQueryReasonKey,
-    getQueryStatusLabel,
-    getQueryStatusKey,
+    getStatusLabel,
     getStatusClassName,
     getProtocolName,
     formatLogTimeDetailed,
@@ -66,8 +65,6 @@ export const DetailModal = (props: Props) => {
     const [scrollAreaRef, setScrollAreaRef] = createSignal<HTMLDivElement>();
     const { canScrollUp, canScrollDown } = useScrollEdges(scrollAreaRef);
 
-    const statusKey = () =>
-        getQueryStatusKey(props.entry.reason, props.entry.originalResponse ?? []);
     const reasonKey = () => getQueryReasonKey(props.entry.reason, props.entry.rules ?? []);
     const reasonDetails = () =>
         getQueryReasonDetails({
@@ -79,7 +76,9 @@ export const DetailModal = (props: Props) => {
         });
     const statusClassName = () => getStatusClassName(props.entry.reason);
     const clientName = () => props.entry.client_info?.name || '';
-    const protocol = () => getProtocolName(props.entry.client_proto);
+    const protocol = () => getProtocolName(props.entry.client_proto, props.entry.reason);
+    const statusLabel = () =>
+        getStatusLabel(props.entry.reason, props.entry.originalResponse ?? [], false);
     const responseList = () => formatResponses(props.entry.response);
     const originalResponseList = () => formatResponses(props.entry.originalResponse);
     const trackerSource = () => props.entry.tracker?.sourceData;
@@ -179,16 +178,30 @@ export const DetailModal = (props: Props) => {
                                 span: renderValue,
                             })}
                         </div>
-                        <div
-                            class={rowClassName()}
-                            data-testid="query-log-detail-protocol"
-                            data-field="protocol"
-                        >
-                            {intl.getMessage('query_log_detail_protocol', {
-                                value: protocol(),
-                                span: renderValue,
-                            })}
-                        </div>
+                        <Show when={protocol()}>
+                            <div
+                                class={rowClassName()}
+                                data-testid="query-log-detail-protocol"
+                                data-field="protocol"
+                            >
+                                {intl.getMessage('query_log_detail_protocol', {
+                                    value: protocol(),
+                                    span: renderValue,
+                                })}
+                            </div>
+                        </Show>
+                        <Show when={props.entry.destination}>
+                            <div
+                                class={rowClassName()}
+                                data-testid="query-log-detail-destination"
+                                data-field="destination"
+                            >
+                                {intl.getMessage('query_log_detail_destination', {
+                                    value: props.entry.destination,
+                                    span: renderValue,
+                                })}
+                            </div>
+                        </Show>
                     </div>
 
                     <Show when={props.entry.tracker}>
@@ -267,7 +280,7 @@ export const DetailModal = (props: Props) => {
                             data-field="status"
                         >
                             {intl.getMessage('query_log_detail_status', {
-                                value: getQueryStatusLabel(statusKey()),
+                                value: statusLabel(),
                                 span: renderStatusValue,
                             })}
                         </div>

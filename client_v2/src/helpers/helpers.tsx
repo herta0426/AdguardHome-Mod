@@ -46,6 +46,7 @@ export type NormalizedQueryLogItem = {
     domain: string;
     unicodeName: string;
     type: string;
+    destination?: string;
     response: NormalizedDnsResponse[];
     reason?: FilteringReason;
     client: string;
@@ -107,6 +108,7 @@ export const normalizeLogs = (logs: QueryLogItem[]): NormalizedQueryLogItem[] =>
             client_proto,
             client_id,
             client_info,
+            destination,
             elapsedMs,
             question,
             reason,
@@ -152,6 +154,7 @@ export const normalizeLogs = (logs: QueryLogItem[]): NormalizedQueryLogItem[] =>
             domain,
             unicodeName,
             type,
+            destination,
             response: processResponse(answer),
             reason,
             client,

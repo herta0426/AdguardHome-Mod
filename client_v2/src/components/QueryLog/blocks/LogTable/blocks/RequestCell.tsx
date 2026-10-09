@@ -16,6 +16,8 @@ type Props = {
 };
 
 export const RequestCell = (props: Props) => {
+    const protocol = () => getProtocolName(props.row.client_proto, props.row.reason);
+
     return (
         <div class={s.requestCell} data-testid="query-log-request-cell">
             <div class={s.requestContent}>
@@ -70,8 +72,8 @@ export const RequestCell = (props: Props) => {
                     </div>
                 </div>
                 <span class={cn(s.secondaryLine, theme.text.t4)}>
-                    {intl.getMessage('type_value', { value: props.row.type })},{' '}
-                    {getProtocolName(props.row.client_proto)}
+                    {intl.getMessage('type_value', { value: props.row.type })}
+                    {protocol() ? `, ${protocol()}` : ''}
                 </span>
             </div>
         </div>

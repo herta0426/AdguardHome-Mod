@@ -113,6 +113,48 @@ describe('DetailModal actions footer', () => {
     });
 });
 
+describe('DetailModal SNI entries', () => {
+    beforeEach(() => {
+        vi.spyOn(intl, 'getMessage').mockImplementation((key) => key);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('shows the destination without a DNS protocol for filtered SNI entries', () => {
+        render(() => (
+            <DetailModal
+                {...defaultProps}
+                entry={makeEntry({
+                    reason: 'FilteredSNI',
+                    destination: '203.0.113.10:443',
+                })}
+            />
+        ));
+
+        expect(screen.getByTestId('query-log-detail-destination')).toBeInTheDocument();
+        expect(screen.queryByTestId('query-log-detail-protocol')).not.toBeInTheDocument();
+        expect(intl.getMessage).toHaveBeenCalledWith('blocked_by_sni');
+    });
+
+    it('shows the destination without a DNS protocol for allowed SNI entries', () => {
+        render(() => (
+            <DetailModal
+                {...defaultProps}
+                entry={makeEntry({
+                    reason: 'NotFilteredSNI',
+                    destination: '203.0.113.11:443',
+                })}
+            />
+        ));
+
+        expect(screen.getByTestId('query-log-detail-destination')).toBeInTheDocument();
+        expect(screen.queryByTestId('query-log-detail-protocol')).not.toBeInTheDocument();
+        expect(intl.getMessage).toHaveBeenCalledWith('allowed_by_sni');
+    });
+});
+
 /**
  * jsdom reports 0 for every scroll metric, so the scroll range of the modal's
  * scroll area has to be injected.  The properties live on `Element.prototype`,

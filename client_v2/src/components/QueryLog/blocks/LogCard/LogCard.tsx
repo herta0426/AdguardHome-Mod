@@ -14,8 +14,7 @@ import {
     getQueryReasonLabel,
     getQueryReasonDetails,
     getQueryReasonKey,
-    getQueryStatusLabel,
-    getQueryStatusKey,
+    getStatusLabel,
     getStatusClassName,
     isBlockedReason,
 } from '../../helpers';
@@ -35,11 +34,9 @@ type Props = {
 
 export const LogCard = (props: Props) => {
     const displayDomain = () => props.entry.unicodeName || props.entry.domain;
-    const proto = () => getProtocolName(props.entry.client_proto);
+    const proto = () => getProtocolName(props.entry.client_proto, props.entry.reason);
     const clientDetails = () => props.entry.client_info?.name || props.entry.client_id;
     const clientLocation = () => getClientLocation(props.entry.client_info?.whois);
-    const statusKey = () =>
-        getQueryStatusKey(props.entry.reason, props.entry.originalResponse ?? []);
     const reasonKey = () => getQueryReasonKey(props.entry.reason, props.entry.rules ?? []);
     const reasonDetails = () =>
         getQueryReasonDetails({
@@ -49,7 +46,8 @@ export const LogCard = (props: Props) => {
             rules: props.entry.rules ?? [],
             whitelistFilters: props.whitelistFilters,
         });
-    const statusLabel = () => getQueryStatusLabel(statusKey());
+    const statusLabel = () =>
+        getStatusLabel(props.entry.reason, props.entry.originalResponse ?? [], false);
     const reasonLabel = () => getQueryReasonLabel(reasonKey());
 
     return (
@@ -92,7 +90,8 @@ export const LogCard = (props: Props) => {
                         </div>
 
                         <span class={cn(s.typeLine, theme.text.t3, theme.text.condenced)}>
-                            {intl.getMessage('type_value', { value: props.entry.type })}, {proto()}
+                            {intl.getMessage('type_value', { value: props.entry.type })}
+                            {proto() ? `, ${proto()}` : ''}
                         </span>
                     </div>
 
@@ -145,6 +144,15 @@ export const LogCard = (props: Props) => {
                     <span class={cn(s.fieldValue, theme.text.t3, theme.text.condenced)}>
                         {props.entry.client}
                     </span>
+
+                    <Show when={props.entry.destination}>
+                        <span class={cn(s.fieldLabel, theme.text.t3, theme.text.condenced)}>
+                            {intl.getMessage('destination')}
+                        </span>
+                        <span class={cn(s.fieldValue, theme.text.t3, theme.text.condenced)}>
+                            {props.entry.destination}
+                        </span>
+                    </Show>
 
                     <Show when={clientDetails()}>
                         <span class={cn(s.fieldLabel, theme.text.t3, theme.text.condenced)}>
