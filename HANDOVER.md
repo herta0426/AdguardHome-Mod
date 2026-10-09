@@ -10,6 +10,7 @@
 
 ## 1. 现状速览
 
+- 上游基线：**AdGuardHome v1.0.0-b.1**（commit `73d4aab`，2026-09-30）。本 mod 的 `internal/`、`client/`（v1 前端）与 `go.mod` 已同步到该版本；同步时有意没有跟进 `client_v2`、DHCP、安全搜索、已阻止的服务、加密设置的删减，`internal/configmgr` 那些仍未使用的重构也只是保持原样。同步方法与必查项见第 10 节。
 - 默认分支 `main`，当前 HEAD `bf485a1d`。里面是 PR #6（删页面与功能）、#7（README 中文优先）、#8（「精简版」改名「修改版 / Mod」）。
 - 已发布 `v2026-09-24`（预发布），产物三个：`AdGuardHome_linux_amd64.tar.gz`、`AdGuardHome_linux_arm64.tar.gz`、`checksums.txt`。
 - 只支持 `linux/amd64` 与 `linux/arm64`，其它平台代码已经从仓库里删掉。

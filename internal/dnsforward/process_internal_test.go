@@ -77,14 +77,12 @@ func TestServer_ProcessInitial(t *testing.T) {
 			t.Parallel()
 
 			c := ServerConfig{
-				TLSConf: &TLSConfig{},
-				Config: Config{
-					AAAADisabled:     tc.aaaaDisabled,
-					UpstreamMode:     UpstreamModeLoadBalance,
-					EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
-					ClientsContainer: EmptyClientsContainer{},
-				},
-				ServePlainDNS: true,
+				TLSConf:          &TLSConfig{},
+				AAAADisabled:     tc.aaaaDisabled,
+				UpstreamMode:     UpstreamModeLoadBalance,
+				EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
+				ClientsContainer: EmptyClientsContainer{},
+				ServePlainDNS:    true,
 			}
 
 			s := createTestServer(
@@ -181,14 +179,12 @@ func TestServer_ProcessFilteringAfterResponse(t *testing.T) {
 			t.Parallel()
 
 			c := ServerConfig{
-				TLSConf: &TLSConfig{},
-				Config: Config{
-					AAAADisabled:     tc.aaaaDisabled,
-					UpstreamMode:     UpstreamModeLoadBalance,
-					EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
-					ClientsContainer: EmptyClientsContainer{},
-				},
-				ServePlainDNS: true,
+				TLSConf:          &TLSConfig{},
+				AAAADisabled:     tc.aaaaDisabled,
+				UpstreamMode:     UpstreamModeLoadBalance,
+				EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
+				ClientsContainer: EmptyClientsContainer{},
+				ServePlainDNS:    true,
 			}
 
 			s := createTestServer(
@@ -342,12 +338,10 @@ func TestServer_ProcessDDRQuery(t *testing.T) {
 					BlockingMode: filtering.BlockingModeDefault,
 				},
 				ServerConfig{
-					Config: Config{
-						HandleDDR:        tc.ddrEnabled,
-						UpstreamMode:     UpstreamModeLoadBalance,
-						EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
-						ClientsContainer: EmptyClientsContainer{},
-					},
+					HandleDDR:        tc.ddrEnabled,
+					UpstreamMode:     UpstreamModeLoadBalance,
+					EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
+					ClientsContainer: EmptyClientsContainer{},
 					TLSConf: &TLSConfig{
 						ServerName:       ddrTestDomainName,
 						TLSListenAddrs:   tc.addrsDoT,
@@ -430,14 +424,12 @@ func TestServer_ProcessUpstream_localPTR(t *testing.T) {
 				BlockingMode: filtering.BlockingModeDefault,
 			},
 			ServerConfig{
-				UDPListenAddrs: []*net.UDPAddr{{}},
-				TCPListenAddrs: []*net.TCPAddr{{}},
-				TLSConf:        &TLSConfig{},
-				Config: Config{
-					UpstreamMode:     UpstreamModeLoadBalance,
-					EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
-					ClientsContainer: EmptyClientsContainer{},
-				},
+				UDPListenAddrs:    []*net.UDPAddr{{}},
+				TCPListenAddrs:    []*net.TCPAddr{{}},
+				TLSConf:           &TLSConfig{},
+				UpstreamMode:      UpstreamModeLoadBalance,
+				EDNSClientSubnet:  &EDNSClientSubnet{Enabled: false},
+				ClientsContainer:  EmptyClientsContainer{},
 				UsePrivateRDNS:    true,
 				LocalPTRResolvers: []string{localUpsAddr},
 				ServePlainDNS:     true,
@@ -461,14 +453,12 @@ func TestServer_ProcessUpstream_localPTR(t *testing.T) {
 				BlockingMode: filtering.BlockingModeDefault,
 			},
 			ServerConfig{
-				UDPListenAddrs: []*net.UDPAddr{{}},
-				TCPListenAddrs: []*net.TCPAddr{{}},
-				TLSConf:        &TLSConfig{},
-				Config: Config{
-					UpstreamMode:     UpstreamModeLoadBalance,
-					EDNSClientSubnet: &EDNSClientSubnet{Enabled: false},
-					ClientsContainer: EmptyClientsContainer{},
-				},
+				UDPListenAddrs:    []*net.UDPAddr{{}},
+				TCPListenAddrs:    []*net.TCPAddr{{}},
+				TLSConf:           &TLSConfig{},
+				UpstreamMode:      UpstreamModeLoadBalance,
+				EDNSClientSubnet:  &EDNSClientSubnet{Enabled: false},
+				ClientsContainer:  EmptyClientsContainer{},
 				UsePrivateRDNS:    false,
 				LocalPTRResolvers: []string{localUpsAddr},
 				ServePlainDNS:     true,

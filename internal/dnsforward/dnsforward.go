@@ -166,12 +166,15 @@ type Server struct {
 
 // DNSCreateParams are parameters to create a new server.
 type DNSCreateParams struct {
-	DNSFilter   *filtering.DNSFilter
-	Stats       stats.Interface
-	QueryLog    querylog.QueryLog
+	DNSFilter *filtering.DNSFilter
+	Stats     stats.Interface
+	QueryLog  querylog.QueryLog
+
+	// PrivateNets contains the private network subnets.  It must not be nil.
 	PrivateNets netutil.SubnetSet
-	Anonymizer  *aghnet.IPMut
-	EtcHosts    *aghnet.HostsContainer
+
+	Anonymizer *aghnet.IPMut
+	EtcHosts   *aghnet.HostsContainer
 
 	// TLSManager provides a TLS configuration for the server.  It must
 	// not be nil.
@@ -329,11 +332,9 @@ func (s *Server) Exchange(
 
 	arpa = dns.Fqdn(arpa)
 	req := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:               dns.Id(),
-			RecursionDesired: true,
-		},
-		Compress: true,
+		Id:               dns.Id(),
+		RecursionDesired: true,
+		Compress:         true,
 		Question: []dns.Question{{
 			Name:   arpa,
 			Qtype:  dns.TypePTR,
