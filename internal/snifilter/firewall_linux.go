@@ -5,6 +5,7 @@ package snifilter
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/florianl/go-nfqueue/v2"
+	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
 
@@ -38,6 +40,15 @@ const (
 	// connections that are not active anymore is removed.
 	flowsCheckInterval = 30 * time.Second
 )
+
+// eventFDValue is the value written to the eventfds used as wakeup and queue
+// stop signals.
+var eventFDValue = []byte{1, 0, 0, 0, 0, 0, 0, 0}
+
+// verdictSetter is the subset of the netfilter queue used to answer packets.
+type verdictSetter interface {
+	SetVerdict(id uint32, verdict int) error
+}
 
 // platform is the Linux-specific state of the SNI filter.
 type platform struct {
@@ -146,11 +157,54 @@ func (f *Filter) checkReversePathFilter(ctx context.Context) {
 	}
 }
 
+// openQueueStoppedFD creates the eventfd that the receive loop signals when
+// it stops.  It returns a negative descriptor when the eventfd is
+// unavailable, in which case the queue still works but its watcher cannot be
+// woken by a callback failure.
+func (f *Filter) openQueueStoppedFD(ctx context.Context) (fd int) {
+	fd, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
+	if err != nil {
+		f.logger.DebugContext(
+			ctx,
+			"creating the queue stopped eventfd",
+			slogutil.KeyError,
+			err,
+		)
+
+		return -1
+	}
+
+	return fd
+}
+
+// closeQueueStoppedFD closes fd unless it is invalid.
+func closeQueueStoppedFD(fd int) {
+	if fd >= 0 {
+		_ = unix.Close(fd)
+	}
+}
+
+// signalQueueStopped wakes the queue watcher.
+func signalQueueStopped(fd int) {
+	if fd >= 0 {
+		_, _ = unix.Write(fd, eventFDValue)
+	}
+}
+
+// isRecoverableQueueError reports whether err is a timeout or a temporary
+// netlink error, which must not stop the receive loop.
+func isRecoverableQueueError(err error) (ok bool) {
+	opErr := &netlink.OpError{}
+
+	return errors.As(err, &opErr) && (opErr.Timeout() || opErr.Temporary())
+}
+
 // dialQueue opens the netfilter queue and registers the packet handler.  The
 // handler keeps a reference to the queue it belongs to, so a packet is always
 // answered through the socket it arrived on, even when the queue is being
-// re-registered.
-func (f *Filter) dialQueue(ctx context.Context) (nf *nfqueue.Nfqueue, err error) {
+// re-registered.  stoppedFD is signaled when the receive loop can no longer
+// process packets.
+func (f *Filter) dialQueue(ctx context.Context, stoppedFD int) (nf *nfqueue.Nfqueue, err error) {
 	conf := &nfqueue.Config{
 		NfQueue:      f.queueNum,
 		MaxPacketLen: 0xffff,
@@ -169,8 +223,33 @@ func (f *Filter) dialQueue(ctx context.Context) (nf *nfqueue.Nfqueue, err error)
 		return nil, err
 	}
 
-	err = nf.Register(ctx, func(a nfqueue.Attribute) (ret int) {
-		return f.handlePacket(nf, a)
+	err = nf.RegisterWithErrorFunc(ctx, func(a nfqueue.Attribute) (ret int) {
+		ret = f.handlePacket(nf, a)
+		if ret != 0 {
+			signalQueueStopped(stoppedFD)
+		}
+
+		return ret
+	}, func(err error) (ret int) {
+		if isRecoverableQueueError(err) {
+			return 0
+		}
+
+		if ctx.Err() != nil {
+			return 1
+		}
+
+		f.logger.WarnContext(
+			ctx,
+			"receiving from the nfqueue; re-registering",
+			"queue_num",
+			f.queueNum,
+			slogutil.KeyError,
+			err,
+		)
+		signalQueueStopped(stoppedFD)
+
+		return 1
 	})
 	if err != nil {
 		closeErr := nf.Close()
@@ -187,37 +266,44 @@ func (f *Filter) dialQueue(ctx context.Context) (nf *nfqueue.Nfqueue, err error)
 // startQueue opens the queue and starts the watcher that re-registers it if
 // the kernel drops it.  ctx must be canceled to stop the watcher.
 func (f *Filter) startQueue(ctx context.Context) (err error) {
+	stoppedFD := f.openQueueStoppedFD(ctx)
+
 	f.queueMu.Lock()
-	nf, err := f.dialQueue(ctx)
+	nf, err := f.dialQueue(ctx, stoppedFD)
 	if err == nil {
 		f.nf = nf
 	}
 	f.queueMu.Unlock()
 	if err != nil {
+		closeQueueStoppedFD(stoppedFD)
+
 		return err
 	}
 
 	f.wg.Add(1)
-	go f.watchQueue(ctx, nf)
+	go f.watchQueue(ctx, nf, stoppedFD)
 
 	return nil
 }
 
 // reopenQueue replaces the current queue with a fresh one and returns it.  It
 // is used by the watcher when the kernel drops the queue.
-func (f *Filter) reopenQueue(ctx context.Context) (nf *nfqueue.Nfqueue, err error) {
+func (f *Filter) reopenQueue(ctx context.Context) (nf *nfqueue.Nfqueue, stoppedFD int, err error) {
 	f.queueMu.Lock()
 	defer f.queueMu.Unlock()
 
 	f.closeQueueLocked()
 
-	nf, err = f.dialQueue(ctx)
+	stoppedFD = f.openQueueStoppedFD(ctx)
+	nf, err = f.dialQueue(ctx, stoppedFD)
 	if err != nil {
-		return nil, err
+		closeQueueStoppedFD(stoppedFD)
+
+		return nil, -1, err
 	}
 	f.nf = nf
 
-	return nf, nil
+	return nf, stoppedFD, nil
 }
 
 // closeQueue closes the netfilter queue.
@@ -245,10 +331,10 @@ func (f *Filter) closeQueueLocked() {
 
 // watchQueue waits for the kernel to drop the queue and re-registers it.  It
 // is event-driven: the netlink socket is added to an epoll instance that
-// reports the hang-up and the error events, and the only other descriptor the
-// wait watches is the wakeup eventfd that the cancellation writes to.  It
-// falls back to poll when epoll is unavailable.
-func (f *Filter) watchQueue(ctx context.Context, nf *nfqueue.Nfqueue) {
+// reports the hang-up and the error events; the receive-loop stop eventfd is
+// watched as well, while cancellation writes to a separate wakeup eventfd.
+// It falls back to poll when epoll is unavailable.
+func (f *Filter) watchQueue(ctx context.Context, nf *nfqueue.Nfqueue, stoppedFD int) {
 	defer f.wg.Done()
 
 	wakeFD, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
@@ -257,6 +343,7 @@ func (f *Filter) watchQueue(ctx context.Context, nf *nfqueue.Nfqueue) {
 		// interrupted on shutdown, so the watcher is skipped.  The queue
 		// itself still works, it just isn't re-registered automatically.
 		f.logger.DebugContext(ctx, "creating the wakeup eventfd", slogutil.KeyError, err)
+		closeQueueStoppedFD(stoppedFD)
 
 		return
 	}
@@ -265,7 +352,7 @@ func (f *Filter) watchQueue(ctx context.Context, nf *nfqueue.Nfqueue) {
 	go func() {
 		<-ctx.Done()
 		// The value isn't read, it only wakes the wait up.
-		_, _ = unix.Write(wakeFD, []byte{1, 0, 0, 0, 0, 0, 0, 0})
+		_, _ = unix.Write(wakeFD, eventFDValue)
 	}()
 
 	epfd, epErr := unix.EpollCreate1(unix.EPOLL_CLOEXEC)
@@ -281,19 +368,26 @@ func (f *Filter) watchQueue(ctx context.Context, nf *nfqueue.Nfqueue) {
 		}
 
 		f.logger.DebugContext(ctx, "epoll is unavailable, using poll", slogutil.KeyError, epErr)
-		f.watchQueueLoop(ctx, nf, wakeFD, -1)
+		f.watchQueueLoop(ctx, nf, wakeFD, -1, stoppedFD)
 
 		return
 	}
 	defer unix.Close(epfd)
 
-	f.watchQueueLoop(ctx, nf, wakeFD, epfd)
+	f.watchQueueLoop(ctx, nf, wakeFD, epfd, stoppedFD)
 }
 
-// watchQueueLoop re-registers the queue whenever the wait reports that the
-// netfilter socket was dropped.  epfd is the epoll instance, or -1 to use
-// poll.
-func (f *Filter) watchQueueLoop(ctx context.Context, nf *nfqueue.Nfqueue, wakeFD, epfd int) {
+// watchQueueLoop re-registers the queue whenever the kernel socket is dropped
+// or the receive loop stops.  epfd is the epoll instance, or -1 to use poll.
+func (f *Filter) watchQueueLoop(
+	ctx context.Context,
+	nf *nfqueue.Nfqueue,
+	wakeFD int,
+	epfd int,
+	stoppedFD int,
+) {
+	defer func() { closeQueueStoppedFD(stoppedFD) }()
+
 	for {
 		fd, err := queueFD(nf)
 		if err != nil {
@@ -302,17 +396,19 @@ func (f *Filter) watchQueueLoop(ctx context.Context, nf *nfqueue.Nfqueue, wakeFD
 			return
 		}
 
-		if !waitQueueEvent(ctx, epfd, fd, wakeFD) || ctx.Err() != nil {
+		if !waitQueueEvent(ctx, epfd, fd, wakeFD, stoppedFD) || ctx.Err() != nil {
 			return
 		}
 
 		f.logger.WarnContext(
 			ctx,
-			"the nfqueue socket was closed; re-registering",
+			"the nfqueue needs to be re-registered",
 			"queue_num", f.queueNum,
 		)
 
-		nf, err = f.reopenQueue(ctx)
+		oldStoppedFD := stoppedFD
+		nf, stoppedFD, err = f.reopenQueue(ctx)
+		closeQueueStoppedFD(oldStoppedFD)
 		if err != nil {
 			f.logger.ErrorContext(ctx, "re-registering the nfqueue", slogutil.KeyError, err)
 
@@ -322,9 +418,10 @@ func (f *Filter) watchQueueLoop(ctx context.Context, nf *nfqueue.Nfqueue, wakeFD
 }
 
 // waitQueueEvent blocks until fd, the netlink socket of the queue, is dropped
-// or until ctx is canceled.  It returns true if the queue is to be
-// re-registered.  epfd is the epoll instance, or -1 to use poll.
-func waitQueueEvent(ctx context.Context, epfd, fd, wakeFD int) (ok bool) {
+// or the receive loop is stopped, or until ctx is canceled.  It returns true
+// if the queue is to be re-registered.  epfd is the epoll instance, or -1 to
+// use poll.
+func waitQueueEvent(ctx context.Context, epfd, fd, wakeFD, stoppedFD int) (ok bool) {
 	if epfd >= 0 {
 		event := &unix.EpollEvent{Events: unix.EPOLLERR | unix.EPOLLHUP, Fd: int32(fd)}
 		err := unix.EpollCtl(epfd, unix.EPOLL_CTL_ADD, fd, event)
@@ -333,11 +430,23 @@ func waitQueueEvent(ctx context.Context, epfd, fd, wakeFD int) (ok bool) {
 		}
 		defer func() { _ = unix.EpollCtl(epfd, unix.EPOLL_CTL_DEL, fd, nil) }()
 
+		stopEvent := &unix.EpollEvent{Events: unix.EPOLLIN, Fd: int32(stoppedFD)}
+		if stoppedFD >= 0 {
+			err = unix.EpollCtl(epfd, unix.EPOLL_CTL_ADD, stoppedFD, stopEvent)
+			if err != nil {
+				return false
+			}
+			defer func() {
+				_ = unix.EpollCtl(epfd, unix.EPOLL_CTL_DEL, stoppedFD, nil)
+			}()
+		}
+
 		// The hang-up and the error events are always reported, so there is
 		// no need to ask for them or for the readability of the socket.
-		var events [1]unix.EpollEvent
+		var events [3]unix.EpollEvent
 		for {
-			_, err = unix.EpollWait(epfd, events[:], -1)
+			n, waitErr := unix.EpollWait(epfd, events[:], -1)
+			err = waitErr
 			if err == unix.EINTR {
 				continue
 			}
@@ -348,15 +457,27 @@ func waitQueueEvent(ctx context.Context, epfd, fd, wakeFD int) (ok bool) {
 				return false
 			}
 
-			return true
+			for _, event := range events[:n] {
+				switch {
+				case int(event.Fd) == wakeFD:
+					return false
+				case stoppedFD >= 0 && int(event.Fd) == stoppedFD:
+					return event.Events&unix.EPOLLIN != 0
+				case int(event.Fd) == fd:
+					return event.Events&(unix.EPOLLERR|unix.EPOLLHUP) != 0
+				}
+			}
 		}
 	}
 
-	pfds := [2]unix.PollFd{{
+	pfds := [3]unix.PollFd{{
 		Fd:     int32(fd),
 		Events: unix.POLLERR | unix.POLLHUP,
 	}, {
 		Fd:     int32(wakeFD),
+		Events: unix.POLLIN,
+	}, {
+		Fd:     int32(stoppedFD),
 		Events: unix.POLLIN,
 	}}
 	for {
@@ -371,7 +492,12 @@ func waitQueueEvent(ctx context.Context, epfd, fd, wakeFD int) (ok bool) {
 			return false
 		}
 
-		return pfds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0
+		if pfds[1].Revents&unix.POLLIN != 0 {
+			return false
+		}
+
+		return pfds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 ||
+			(stoppedFD >= 0 && pfds[2].Revents&unix.POLLIN != 0)
 	}
 }
 
@@ -392,16 +518,30 @@ func queueFD(nf *nfqueue.Nfqueue) (fd int, err error) {
 
 // handlePacket processes a packet received from the kernel and reports the
 // verdict for it.
-func (f *Filter) handlePacket(nf *nfqueue.Nfqueue, a nfqueue.Attribute) (ret int) {
-	if a.PacketID == nil || a.Payload == nil {
-		return 0
+func (f *Filter) handlePacket(nf verdictSetter, a nfqueue.Attribute) (ret int) {
+	if a.PacketID == nil {
+		f.logger.Warn(
+			"received an nfqueue packet without an id; re-registering the queue",
+			"queue_num",
+			f.queueNum,
+		)
+
+		return 1
 	}
 
 	verdict := nfqueue.NfAccept
 
-	// The fast path releases everything that cannot begin a TLS ClientHello
-	// with a few byte comparisons and no allocation at all.
-	if pkt := *a.Payload; f.isTLSHandshake(pkt) {
+	switch {
+	case a.Payload == nil:
+		f.logger.Warn(
+			"received an nfqueue packet without a payload; accepting it",
+			"id",
+			*a.PacketID,
+		)
+	case f.isTLSHandshake(*a.Payload):
+		// The fast path releases everything that cannot begin a TLS
+		// ClientHello with a few byte comparisons and no allocation at all.
+		pkt := *a.Payload
 		p := f.pktPool.Get().(*packet)
 		if err := parsePacketInto(pkt, p); err == nil {
 			res := f.inspect(p)
@@ -422,9 +562,16 @@ func (f *Filter) handlePacket(nf *nfqueue.Nfqueue, a nfqueue.Attribute) (ret int
 		f.pktPool.Put(p)
 	}
 
-	err := nf.SetVerdict(*a.PacketID, verdict)
-	if err != nil {
-		f.logger.Debug("setting the verdict", "id", *a.PacketID, slogutil.KeyError, err)
+	if err := nf.SetVerdict(*a.PacketID, verdict); err != nil {
+		f.logger.Warn(
+			"setting the verdict; re-registering the queue",
+			"id",
+			*a.PacketID,
+			slogutil.KeyError,
+			err,
+		)
+
+		return 1
 	}
 
 	return 0
