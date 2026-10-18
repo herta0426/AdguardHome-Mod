@@ -178,6 +178,12 @@ func syncSNIFilter(ctx context.Context, l *slog.Logger) {
 	}
 
 	if globalContext.sniFilter != nil {
+		// The filter stays in the queue while the protection is paused, since
+		// reopening the same queue number fails, so only the state is pushed
+		// to it, see [snifilter.Filter.SetProtectionStatus].
+		status, until := globalContext.filters.ProtectionStatus()
+		globalContext.sniFilter.SetProtectionStatus(status, until)
+
 		return
 	}
 
@@ -212,6 +218,11 @@ func startSNIFilterLocked(
 	if err != nil {
 		return fmt.Errorf("starting: %w", err)
 	}
+
+	// The filter may be started while the protection is already paused, so
+	// push the current state before the first packet is inspected.
+	status, until := dnsFilter.ProtectionStatus()
+	sni.SetProtectionStatus(status, until)
 
 	globalContext.sniFilter = sni
 

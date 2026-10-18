@@ -104,6 +104,39 @@ func TestFilter_handlePacket(t *testing.T) {
 	}
 }
 
+// TestFilter_handlePacket_paused tests that a connection that hits a blocking
+// rule is accepted and recorded in the query log while the protection is
+// paused, and that no reset segment is sent for it.
+func TestFilter_handlePacket_paused(t *testing.T) {
+	t.Parallel()
+
+	const serverName = "ads.example.com"
+
+	hello := captureClientHello(t, serverName)
+	require.NotEmpty(t, hello)
+
+	ql := &countingQueryLog{}
+	f := newTestFilter(t, ql)
+
+	// The protection is paused while the ClientHello is inspected.
+	f.SetProtectionStatus(false, nil)
+
+	id := uint32(42)
+	pkt := tcpPacket4(testReassemblySrc, testReassemblyDst, 1000, 1, tcpFlagACK, hello)
+	setter := &testVerdictSetter{}
+
+	require.Equal(t, 0, f.handlePacket(setter, nfqueue.Attribute{
+		PacketID: &id,
+		Payload:  &pkt,
+	}))
+	assert.Equal(t, 1, setter.calls)
+	assert.Equal(t, id, setter.id)
+	assert.Equal(t, nfqueue.NfAccept, setter.verdict)
+	assert.Equal(t, 1, ql.count)
+	require.NotNil(t, ql.added)
+	assert.Equal(t, serverName+".", ql.added.Question.Question[0].Name)
+}
+
 func TestIsRecoverableQueueError(t *testing.T) {
 	t.Parallel()
 
