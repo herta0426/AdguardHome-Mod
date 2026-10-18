@@ -527,6 +527,9 @@ var config = &configuration{
 	SNIFilter: snifilter.Params{
 		QueueNum: defaultSNIQueueNum,
 		Ports:    []uint16{443, 8443},
+
+		// UIDs and DropQUIC are descriptive only, see the warning in
+		// [validateConfig].
 		UIDs:     []string{},
 		DropQUIC: false,
 	},
@@ -734,6 +737,14 @@ func validateConfig(ctx context.Context, l *slog.Logger, fileData []byte) (err e
 	err = config.SNIFilter.Validate()
 	if err != nil {
 		return fmt.Errorf("validating the sni filter: %w", err)
+	}
+
+	if len(config.SNIFilter.UIDs) > 0 || config.SNIFilter.DropQUIC {
+		l.WarnContext(
+			ctx,
+			"sni_filter.uids and sni_filter.drop_quic are descriptive fields; "+
+				"AdGuard Home installs no netfilter rules, the operator's script decides",
+		)
 	}
 
 	if len(config.Users) == 0 {

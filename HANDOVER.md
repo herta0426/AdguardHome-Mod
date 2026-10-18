@@ -120,8 +120,8 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 sni_filter:
   queue_num: 7          # 别用 0；脚本也从这里读队列号
   ports: [443, 8443]    # 用于快速短路：只有目的端口在列表里的包才进入解析
-  uids: []              # 描述性字段；例如 ["10000-19999"]，空表示所有进程
-  drop_quic: false      # 描述性字段；打开则由脚本 REJECT UDP 443，逼 HTTP/3 回退 TCP
+  uids: []              # 描述性字段；例如 ["10000-19999"]，空表示所有进程；启动时 warn 提示不生效
+  drop_quic: false      # 描述性字段；打开则由脚本 REJECT UDP 443，逼 HTTP/3 回退 TCP；启动时同样 warn
 ```
 
 `filtering.blocking_mode: strong` 时上面这一段自动生效；切成别的模式则把队列停掉。

@@ -270,13 +270,14 @@ func (u *Updater) unpack(ctx context.Context) (err error) {
 	_, pkgNameOnly := filepath.Split(u.packageURL)
 
 	u.logger.InfoContext(ctx, "unpacking package", "package_name", pkgNameOnly)
+	lim := defaultUnpackLimits()
 	if strings.HasSuffix(pkgNameOnly, ".zip") {
-		u.unpackedFiles, err = u.unpackZip(ctx, u.packageName, u.updateDir)
+		u.unpackedFiles, err = u.unpackZip(ctx, u.packageName, u.updateDir, lim)
 		if err != nil {
 			return fmt.Errorf(".zip unpack failed: %w", err)
 		}
 	} else if strings.HasSuffix(pkgNameOnly, ".tar.gz") {
-		u.unpackedFiles, err = u.unpackTarGz(ctx, u.packageName, u.updateDir)
+		u.unpackedFiles, err = u.unpackTarGz(ctx, u.packageName, u.updateDir, lim)
 		if err != nil {
 			return fmt.Errorf(".tar.gz unpack failed: %w", err)
 		}
@@ -395,12 +396,48 @@ func (u *Updater) clean(ctx context.Context) {
 	if err != nil {
 		u.logger.WarnContext(ctx, "removing update dir", slogutil.KeyError, err)
 	}
+
+	u.unpackedFiles = nil
 }
 
 // MaxPackageFileSize is a maximum package file length in bytes.  The largest
 // package whose size is limited by this constant currently has the size of
 // approximately 9 MiB.
 const MaxPackageFileSize = 32 * 1024 * 1024
+
+// MaxUnpackedFileSize is a maximum size in bytes of one file unpacked from the
+// package.
+const MaxUnpackedFileSize = 128 * 1024 * 1024
+
+// MaxUnpackedSize is a maximum total size in bytes of all files unpacked from
+// the package.
+const MaxUnpackedSize = 256 * 1024 * 1024
+
+// MaxUnpackedEntries is a maximum number of entries in the package.
+const MaxUnpackedEntries = 64
+
+// unpackLimits are the limits for the contents of the package.  Contrary to
+// [MaxPackageFileSize], which limits the downloaded archive, these limits are
+// applied to the files unpacked from it.
+type unpackLimits struct {
+	// maxFile is a maximum size of one unpacked file in bytes.
+	maxFile int64
+
+	// maxTotal is a maximum total size of all unpacked files in bytes.
+	maxTotal int64
+
+	// maxEntries is a maximum number of unpacked entries.
+	maxEntries int
+}
+
+// defaultUnpackLimits returns the unpacking limits used by the updater.
+func defaultUnpackLimits() (lim unpackLimits) {
+	return unpackLimits{
+		maxFile:    MaxUnpackedFileSize,
+		maxTotal:   MaxUnpackedSize,
+		maxEntries: MaxUnpackedEntries,
+	}
+}
 
 // Download package file and save it to disk
 func (u *Updater) downloadPackageFile(ctx context.Context) (err error) {
@@ -448,6 +485,7 @@ func (u *Updater) unpackTarGzFile(
 	outDir string,
 	tr *tar.Reader,
 	hdr *tar.Header,
+	lim unpackLimits,
 ) (name string, err error) {
 	name = filepath.Base(hdr.Name)
 	if name == "" {
@@ -487,6 +525,15 @@ func (u *Updater) unpackTarGzFile(
 		return "", nil
 	}
 
+	if hdr.Size > lim.maxFile {
+		return "", fmt.Errorf(
+			"unpacking %q: file size %d exceeds the limit %d",
+			name,
+			hdr.Size,
+			lim.maxFile,
+		)
+	}
+
 	var wc io.WriteCloser
 	wc, err = os.OpenFile(outName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode)&0o755)
 	if err != nil {
@@ -494,9 +541,12 @@ func (u *Updater) unpackTarGzFile(
 	}
 	defer func() { err = errors.WithDeferred(err, wc.Close()) }()
 
-	_, err = io.Copy(wc, tr)
+	var n int64
+	n, err = io.Copy(wc, tr)
 	if err != nil {
 		return "", fmt.Errorf("io.Copy(): %w", err)
+	} else if n != hdr.Size {
+		return "", fmt.Errorf("unpacking %q: written %d bytes, want %d", name, n, hdr.Size)
 	}
 
 	u.logger.InfoContext(ctx, "created file", "name", outName)
@@ -511,6 +561,7 @@ func (u *Updater) unpackTarGz(
 	ctx context.Context,
 	tarfile string,
 	outDir string,
+	lim unpackLimits,
 ) (files []string, err error) {
 	f, err := os.Open(tarfile)
 	if err != nil {
@@ -525,6 +576,8 @@ func (u *Updater) unpackTarGz(
 	defer func() { err = errors.WithDeferred(err, gzReader.Close()) }()
 
 	tarReader := tar.NewReader(gzReader)
+	var total int64
+	entries := 0
 	for {
 		var hdr *tar.Header
 		hdr, err = tarReader.Next()
@@ -538,11 +591,45 @@ func (u *Updater) unpackTarGz(
 			break
 		}
 
+		entries++
+		if entries > lim.maxEntries {
+			err = fmt.Errorf("unpacking %d entries: exceeds the limit %d", entries, lim.maxEntries)
+
+			break
+		}
+
+		if hdr.Size > lim.maxFile {
+			err = fmt.Errorf(
+				"unpacking %q: file size %d exceeds the limit %d",
+				hdr.Name,
+				hdr.Size,
+				lim.maxFile,
+			)
+
+			break
+		}
+
+		total += hdr.Size
+		if total > lim.maxTotal {
+			err = fmt.Errorf(
+				"unpacking %q: total size %d exceeds the limit %d",
+				hdr.Name,
+				total,
+				lim.maxTotal,
+			)
+
+			break
+		}
+
 		var name string
-		name, err = u.unpackTarGzFile(ctx, outDir, tarReader, hdr)
+		name, err = u.unpackTarGzFile(ctx, outDir, tarReader, hdr, lim)
 
 		if name != "" {
 			files = append(files, name)
+		}
+
+		if err != nil {
+			break
 		}
 	}
 
@@ -555,6 +642,7 @@ func (u *Updater) unpackZipFile(
 	ctx context.Context,
 	outDir string,
 	zf *zip.File,
+	lim unpackLimits,
 ) (name string, err error) {
 	var rc io.ReadCloser
 	rc, err = zf.Open()
@@ -589,6 +677,15 @@ func (u *Updater) unpackZipFile(
 		return "", nil
 	}
 
+	if zf.UncompressedSize64 > uint64(lim.maxFile) {
+		return "", fmt.Errorf(
+			"unpacking %q: file size %d exceeds the limit %d",
+			name,
+			zf.UncompressedSize64,
+			lim.maxFile,
+		)
+	}
+
 	var wc io.WriteCloser
 	wc, err = os.OpenFile(outputName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
 	if err != nil {
@@ -596,9 +693,19 @@ func (u *Updater) unpackZipFile(
 	}
 	defer func() { err = errors.WithDeferred(err, wc.Close()) }()
 
-	_, err = io.Copy(wc, rc)
+	// The size from the central directory is controlled by the package author,
+	// so limit the actual amount of read bytes as well.
+	var n int64
+	n, err = io.Copy(wc, ioutil.LimitReader(rc, uint64(lim.maxFile)+1))
 	if err != nil {
+		var limitErr *ioutil.LimitError
+		if errors.As(err, &limitErr) {
+			return "", fmt.Errorf("unpacking %q: file size exceeds the limit %d", name, lim.maxFile)
+		}
+
 		return "", fmt.Errorf("io.Copy(): %w", err)
+	} else if n > lim.maxFile {
+		return "", fmt.Errorf("unpacking %q: written %d bytes, limit %d", name, n, lim.maxFile)
 	}
 
 	u.logger.InfoContext(ctx, "created file", "name", outputName)
@@ -613,6 +720,7 @@ func (u *Updater) unpackZip(
 	ctx context.Context,
 	zipfile string,
 	outDir string,
+	lim unpackLimits,
 ) (files []string, err error) {
 	zrc, err := zip.OpenReader(zipfile)
 	if err != nil {
@@ -620,9 +728,41 @@ func (u *Updater) unpackZip(
 	}
 	defer func() { err = errors.WithDeferred(err, zrc.Close()) }()
 
+	var total int64
+	entries := 0
 	for _, zf := range zrc.File {
+		entries++
+		if entries > lim.maxEntries {
+			err = fmt.Errorf("unpacking %d entries: exceeds the limit %d", entries, lim.maxEntries)
+
+			break
+		}
+
+		if zf.UncompressedSize64 > uint64(lim.maxFile) {
+			err = fmt.Errorf(
+				"unpacking %q: file size %d exceeds the limit %d",
+				zf.Name,
+				zf.UncompressedSize64,
+				lim.maxFile,
+			)
+
+			break
+		}
+
+		total += int64(zf.UncompressedSize64)
+		if total > lim.maxTotal {
+			err = fmt.Errorf(
+				"unpacking %q: total size %d exceeds the limit %d",
+				zf.Name,
+				total,
+				lim.maxTotal,
+			)
+
+			break
+		}
+
 		var name string
-		name, err = u.unpackZipFile(ctx, outDir, zf)
+		name, err = u.unpackZipFile(ctx, outDir, zf, lim)
 		if err != nil {
 			break
 		}
