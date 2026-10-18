@@ -35,10 +35,6 @@ const (
 	// queueWriteTimeout is the time the queue waits to hand the packet over
 	// to the kernel.
 	queueWriteTimeout = 20 * time.Millisecond
-
-	// flowsCheckInterval is the interval at which the state of the
-	// connections that are not active anymore is removed.
-	flowsCheckInterval = 30 * time.Second
 )
 
 // eventFDValue is the value written to the eventfds used as wakeup and queue
@@ -538,9 +534,10 @@ func (f *Filter) handlePacket(nf verdictSetter, a nfqueue.Attribute) (ret int) {
 			"id",
 			*a.PacketID,
 		)
-	case f.isTLSHandshake(*a.Payload):
-		// The fast path releases everything that cannot begin a TLS
-		// ClientHello with a few byte comparisons and no allocation at all.
+	case f.needsInspect(*a.Payload):
+		// The gate releases everything that cannot begin a TLS ClientHello
+		// and doesn't belong to a tracked connection with a few byte
+		// comparisons and no allocation at all.
 		pkt := *a.Payload
 		p := f.pktPool.Get().(*packet)
 		if err := parsePacketInto(pkt, p); err == nil {
