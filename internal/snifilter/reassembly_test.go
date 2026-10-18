@@ -52,13 +52,21 @@ func newTestFilter(t *testing.T, ql querylog.QueryLog) (f *Filter) {
 
 	df.SetEnabled(true)
 
-	return &Filter{
+	f = &Filter{
 		logger:   slogutil.NewDiscardLogger(),
 		filter:   df,
 		queryLog: ql,
 		flows:    map[flowKey]*flow{},
 		ports:    []uint16{443},
 	}
+
+	// The tests that go through the queue callback need the pool, since
+	// sync.Pool.Get returns nil for an empty pool without a New function,
+	// while the callback type-asserts the result.  [New] sets it up the same
+	// way.
+	f.pktPool.New = func() (v any) { return &packet{} }
+
+	return f
 }
 
 // feedPacket passes the raw packet pkt through the gate and the inspection the
