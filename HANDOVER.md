@@ -142,10 +142,12 @@ sni_filter:
 
 **已知限制与坑。**
 
-- 内核必须支持 `xt_connbytes` 与 `NFQUEUE`（nft 后端也行）。厂商内核可能裁剪，真机上先跑一条 `iptables -t filter -I OUTPUT -p tcp --dport 443 -j NFQUEUE --queue-num 7 --queue-bypass` 验证。
+- 内核必须支持 `NFQUEUE`（nft 后端也行）；脚本若还用了 `xt_connbytes`、`xt_owner`、`xt_multiport`，厂商内核可能裁剪。真机上先跑一条 `iptables -t filter -I OUTPUT -p tcp --dport 443 -j NFQUEUE --queue-num 7 --queue-bypass` 验证，再用 `iptables -t filter -L AGH_SNI -vn` 看计数器是否真的在涨。
+- **规则不要排除 SYN**：`--tcp-flags SYN,FIN,RST NONE` 会把 SYN 挡在队列外，用户态只能乐观同步起始序号。如果一个连接的第一个入队段不是 ClientHello 开头（恶意 App 可以故意这么做），这条连接就不会被跟踪、也不会被拦。把 SYN 送进队列（只继续排除纯 ACK）即可让 `nextSeq` 从 SYN 的 seq+1 精确初始化。
 - 注入的 RST 源地址是远端 IP，靠本机 IP 栈绕回本地 socket；`net.ipv4.conf.*.rp_filter` 若是**严格模式（1）**，这个包会被丢掉，效果退化成「连接一直挂着」（仍然拦截，只是慢）。部分 ROM 要留意。
-- HTTP/3（QUIC）的 SNI 是加密的，拦不到，只能 `drop_quic: true` 逼回退 TCP。ECH 普及后这条路也会静默失效。
-- 只看进程 UID、不看客户端 IP：手机上的应用都在同一台机器上，所以**按客户端区分的过滤规则在 SNI 层不生效**，只按全局规则判定（`setts.ProtectionEnabled` 恒为真）。
+- HTTP/3（QUIC）的 SNI 是加密的，拦不到，只能靠**模块脚本**对 UDP/443 做 REJECT 逼回退 TCP。`sni_filter.drop_quic` 只是描述性字段：AdGuard Home 不安装任何规则，配了它也不改变本机行为（启动时会 warn 提示）。模拟器（MuMu 等）上若 UDP/443 没被拒，App 会一直走 HTTP/3，表现就是“完全没有 SNI 记录”。ECH 普及后这条路同样会静默失效。
+- 只看进程 UID、不看客户端 IP：手机上的应用都在同一台机器上，所以**按客户端区分的过滤规则在 SNI 层不生效**，只按全局规则判定（`checkHost` 里把 `setts.ProtectionEnabled` 置为真，让规则引擎不因暂停而短路）。
+- **暂停保护会影响 SNI**：暂停时队列不重建，只把新状态推给过滤器——连接照旧解析、照旧写 SNI 查询日志，但不发 RST、不 DROP；恢复后已判决为拦截的连接立即重新 DROP。状态由 `syncSNIFilter` 通过 `Filter.SetProtectionStatus` 推送，到期时间每包再比一次，不依赖下一次 DNS 查询。
 - **SNI 走查询日志，不走主日志**：每条解析出 SNI 的连接都会写进查询日志（`internal/snifilter/snifilter.go` 的 `logConnection`），域名就是 SNI。原因换成 SNI 专用的两个值，好把 TLS 连接与 DNS 请求分开：被拦的是 `filtering.FilteredSNI`（界面显示「已阻止（SNI）」，仍归入「已阻止」筛选），放行的是 `filtering.NotFilteredSNI`（显示「已处理（SNI）」）——过滤引擎给的原因不再写进查询日志，但命中的规则照旧带上，所以「命中允许规则」的连接改看规则列而不是「允许项」筛选。SNI 记录还多一个 **`destination`**（`AddParams.Dst` → `logEntry.Dst` → `entryToJSON` 的 `destination`，前端在响应详情里渲染成一行「目标地址」）：连接的目标 IP:端口，DNS 查询没有这一维，只有 SNI 过滤能看到应用最终连到哪个地址。主日志只在启动/停止、出错误的时候写，不再逐条打印连接；RST 发不出去也只记 debug。
 - 查询日志里记的是**每条连接**（放行的也记），手机上流量大时会把查询日志刷得比较快，日志轮转要不要调（`querylog.mem_size` / `interval`）按实际用量定。
 - 队列号默认 7，和别的 NFQUEUE 使用者撞车时改 `queue_num`。
