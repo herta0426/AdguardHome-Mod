@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AdguardTeam/AdGuardHome/internal/filtering"
@@ -225,11 +226,29 @@ type Config struct {
 	Params
 }
 
+// protectionState is the state of the DNS protection as the filter saw it on
+// the last update.  It's replaced as a whole, so that the packets read it with
+// a single atomic load and never observe a half-updated value.
+type protectionState struct {
+	// enabled is true if the protection is on.
+	enabled bool
+
+	// disabledUntil is the time until which the protection is paused.  The
+	// zero value means that the protection is paused without a time limit.
+	disabledUntil time.Time
+}
+
 // Filter inspects outgoing TLS connections and resets the ones whose server
 // name is blocked by the filtering rules.
 type Filter struct {
 	logger *slog.Logger
 	filter *filtering.DNSFilter
+
+	// protection is the state of the DNS protection, see
+	// [Filter.SetProtectionStatus].  It's nil until the status is pushed to the
+	// filter, in which case the connections are inspected, see
+	// [Filter.protectionActive].
+	protection atomic.Pointer[protectionState]
 
 	// flows is the state of the connections being inspected.  It's protected
 	// by mu.
@@ -342,6 +361,43 @@ func New(c *Config) (f *Filter, err error) {
 	return f, nil
 }
 
+// SetProtectionStatus updates the state of the DNS protection as the filter
+// sees it.  enabled is the value of the protection switch, and disabledUntil is
+// the time until which the protection is paused.  A nil disabledUntil means
+// that the pause, if any, has no time limit.  It's safe to call it from another
+// goroutine, which is what the module that owns the configuration does.
+func (f *Filter) SetProtectionStatus(enabled bool, disabledUntil *time.Time) {
+	// The state is a small value, but it's still copied into a new structure,
+	// so that the packets never read the fields that another goroutine is
+	// writing at the same time.
+	st := &protectionState{enabled: enabled}
+	if disabledUntil != nil {
+		st.disabledUntil = *disabledUntil
+	}
+
+	f.protection.Store(st)
+}
+
+// protectionActive returns true if the protection is on at now, that is, if the
+// connections must be inspected and the blocked ones must be reset.  A filter
+// without a protection state inspects the connections, since it's the state the
+// filter is created in before the configuration is known.
+func (f *Filter) protectionActive(now time.Time) (ok bool) {
+	st := f.protection.Load()
+	if st == nil || st.enabled {
+		return true
+	}
+
+	if st.disabledUntil.IsZero() {
+		// The protection is paused until it's turned back on.
+		return false
+	}
+
+	// The pause is over, but the module that owns the configuration hasn't
+	// updated the state yet, so compare the time here as well.
+	return !now.Before(st.disabledUntil)
+}
+
 // Start starts inspecting the connections.  It returns an error if the
 // platform support is unavailable.
 func (f *Filter) Start(ctx context.Context) (err error) {
@@ -449,7 +505,9 @@ type inspection struct {
 }
 
 // inspect checks the packet against the filtering rules and returns the action
-// to take for it.
+// to take for it.  While the DNS protection is paused, the packet is inspected
+// and recorded in the query log as usual, but it's accepted, so that the user
+// still sees the connections that would have been reset.
 func (f *Filter) inspect(p *packet) (res inspection) {
 	res.verdict = verdictAccept
 
@@ -460,6 +518,10 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 
 	key := flowKey{src: p.src, dst: p.dst}
 	now := time.Now()
+
+	// The state is read once per packet, so that a pause that starts or ends
+	// in the middle of a packet can't produce a half-applied verdict.
+	paused := !f.protectionActive(now)
 
 	f.mu.Lock()
 	fl := f.flows[key]
@@ -479,7 +541,10 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 		blocked := fl.blocked
 		f.mu.Unlock()
 
-		if blocked {
+		// The connections that were blocked before the pause are let
+		// through as well, while the verdict itself is kept, so that they are
+		// reset again once the protection is back on.
+		if blocked && !paused {
 			res.verdict = verdictDrop
 		}
 
@@ -501,9 +566,13 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 	case err == nil && name != "":
 		filterRes := f.checkHost(name)
 		blocked := filterRes.IsFiltered
-		f.decide(key, blocked)
+
+		// The connection is recorded as accepted while the protection is
+		// paused, so that the rest of its packets stay on the fast path.
+		f.decide(key, blocked && !paused)
 		f.logConnection(p, name, filterRes)
-		if blocked {
+
+		if blocked && !paused {
 			res.verdict = verdictReset
 			res.toClient, res.toServer = resetSegments(p)
 		}
