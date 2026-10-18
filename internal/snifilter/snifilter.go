@@ -67,6 +67,32 @@ const (
 	ipProtoTCP = 6
 )
 
+// Protocol numbers of the IPv6 extension headers and of the protocols that
+// prevent the filter from inspecting the upper layer.
+const (
+	ipProtoHopByHop     = 0
+	ipProtoRouting      = 43
+	ipProtoFragment     = 44
+	ipProtoESP          = 50
+	ipProtoAH           = 51
+	ipProtoNoNextHeader = 59
+	ipProtoDestOpts     = 60
+	ipProtoMobility     = 135
+	ipProtoHIP          = 139
+	ipProtoShim6        = 140
+)
+
+// Limits of the walk through the IPv6 extension headers.
+const (
+	// ipv6MaxExtHdrs is the maximum number of the IPv6 extension headers
+	// inspected before giving up.
+	ipv6MaxExtHdrs = 8
+
+	// ipv6MaxExtLen is the maximum total length of the IPv6 extension headers
+	// inspected before giving up.
+	ipv6MaxExtLen = 256
+)
+
 // Errors returned by [parsePacket].
 var (
 	errNotIPPacket  = errors.Error("not an ip packet")
@@ -309,6 +335,11 @@ type packet struct {
 
 	// flags are the TCP flags of the packet.
 	flags uint8
+
+	// fragmented is true if the packet is the first fragment of a fragmented
+	// IPv4 packet.  The rest of the handshake stays in the other fragments,
+	// which the filter cannot inspect.
+	fragmented bool
 }
 
 // rstSegment describes a TCP RST segment to inject.
@@ -399,7 +430,16 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 	case err == nil:
 		f.decide(key, false)
 	case errors.Is(err, errNeedMore):
-		// Wait for the next packet of the connection.
+		// Wait for the next packet of the connection.  Only the first
+		// fragment of a fragmented IPv4 packet is inspected, so its server
+		// name is likely to stay out of reach.
+		if p.fragmented {
+			f.logger.Debug(
+				"fragmented ClientHello, the SNI is likely missed",
+				"src", p.src,
+				"dst", p.dst,
+			)
+		}
 	default:
 		// The connection doesn't carry a TLS ClientHello, so there is no
 		// server name to check.
@@ -559,38 +599,19 @@ func resetSegments(p *packet) (toClient, toServer rstSegment) {
 // bytes that are already there and never allocates, so the packets that cannot
 // contain a server name are released without touching the connection table.
 //
-// The checks are, in order: the IP header, the TCP protocol number, the
-// destination port, the TCP header, and the first bytes of the TLS record.
-// b must contain the whole packet, as it comes from the NFQUEUE.
+// The checks are, in order: the IP header and the IPv6 extension headers, the
+// TCP protocol number, the destination port, the TCP header, and the first
+// bytes of the TLS record.  b must contain the whole packet, as it comes from
+// the NFQUEUE.
 func (f *Filter) isTLSHandshake(b []byte) (ok bool) {
-	if len(b) < 1 {
+	proto, ipHdrLen, hdrOK := upperLayer(b)
+	if !hdrOK || proto != ipProtoTCP {
 		return false
 	}
 
-	var ipHdrLen int
-	switch b[0] >> 4 {
-	case 4:
-		if len(b) < ipv4HeaderLen || b[9] != ipProtoTCP {
-			return false
-		}
-
-		// Only the first fragment carries the TCP header, and the rest of the
-		// packet cannot be inspected before it is reassembled.
-		if binary.BigEndian.Uint16(b[6:8])&0x1fff != 0 {
-			return false
-		}
-
-		ipHdrLen = int(b[0]&0x0f) * 4
-		if ipHdrLen < ipv4HeaderLen {
-			return false
-		}
-	case 6:
-		if len(b) < ipv6HeaderLen || b[6] != ipProtoTCP {
-			return false
-		}
-
-		ipHdrLen = ipv6HeaderLen
-	default:
+	// Only the first fragment of an IPv4 packet carries the TCP header, and
+	// the rest of the packet cannot be inspected before it is reassembled.
+	if b[0]>>4 == 4 && binary.BigEndian.Uint16(b[6:8])&0x1fff != 0 {
 		return false
 	}
 
@@ -654,25 +675,124 @@ func parsePacketInto(b []byte, p *packet) (err error) {
 	}
 }
 
+// upperLayer returns the protocol number of the upper layer of the raw IP
+// packet b and the offset at which that layer starts within b.  It walks the
+// IPv6 extension headers, so that the fast path and the parser judge the
+// packets of the same connection the same way.
+//
+// The first fragment of a fragmented IPv4 packet is not distinguished from a
+// regular packet, so the callers are responsible for checking the fragment
+// offset of the IPv4 packets themselves.  The fragments of IPv6 packets that
+// aren't the first one are not supported and make ok false, as do the
+// protocols that encrypt or hide the transport layer.
+//
+// b must contain the whole packet.  ok is false if b is malformed, if the
+// chain of the IPv6 extension headers is unreasonably long, or if the upper
+// layer cannot be inspected.  upperLayer never panics, because its input comes
+// from the network.
+func upperLayer(b []byte) (proto uint8, off int, ok bool) {
+	if len(b) < 1 {
+		return 0, 0, false
+	}
+
+	switch b[0] >> 4 {
+	case 4:
+		if len(b) < ipv4HeaderLen {
+			return 0, 0, false
+		}
+
+		ihl := int(b[0]&0x0f) * 4
+		if ihl < ipv4HeaderLen || ihl > len(b) {
+			return 0, 0, false
+		}
+
+		return b[9], ihl, true
+	case 6:
+		if len(b) < ipv6HeaderLen {
+			return 0, 0, false
+		}
+	default:
+		return 0, 0, false
+	}
+
+	proto = b[6]
+	off = ipv6HeaderLen
+	for n := 0; ; n++ {
+		switch proto {
+		case ipProtoHopByHop, ipProtoRouting, ipProtoDestOpts, ipProtoAH, ipProtoFragment:
+			// Go on below.
+		case ipProtoESP, ipProtoNoNextHeader, ipProtoMobility, ipProtoHIP, ipProtoShim6:
+			// The transport layer is either absent or hidden, so there is
+			// nothing to inspect.
+			return 0, 0, false
+		default:
+			return proto, off, true
+		}
+
+		hdrLen, next, hdrOK := ipv6ExtHdrLen(proto, b[off:])
+		if !hdrOK {
+			return 0, 0, false
+		}
+
+		if n >= ipv6MaxExtHdrs {
+			return 0, 0, false
+		}
+
+		proto, off = next, off+hdrLen
+		if off > len(b) || off-ipv6HeaderLen > ipv6MaxExtLen {
+			return 0, 0, false
+		}
+	}
+}
+
+// ipv6ExtHdrLen returns the length of the IPv6 extension header of the type
+// proto that starts at the beginning of b and the protocol number of the
+// header that follows it.  ok is false if b is too short or if the fragment
+// isn't the first one, and thus doesn't contain the header of the upper layer.
+func ipv6ExtHdrLen(proto uint8, b []byte) (hdrLen int, next uint8, ok bool) {
+	switch proto {
+	case ipProtoHopByHop, ipProtoRouting, ipProtoDestOpts:
+		if len(b) < 2 {
+			return 0, 0, false
+		}
+
+		return (int(b[1]) + 1) * 8, b[0], true
+	case ipProtoAH:
+		if len(b) < 2 {
+			return 0, 0, false
+		}
+
+		return (int(b[1]) + 2) * 4, b[0], true
+	case ipProtoFragment:
+		if len(b) < 8 {
+			return 0, 0, false
+		}
+
+		// Only the first fragment contains the header of the upper layer.
+		if binary.BigEndian.Uint16(b[2:4])&0xfff8 != 0 {
+			return 0, 0, false
+		}
+
+		return 8, b[0], true
+	default:
+		return 0, 0, false
+	}
+}
+
 // parseIPv4PacketInto parses an IPv4 packet into p.
 func parseIPv4PacketInto(b []byte, p *packet) (err error) {
-	if len(b) < ipv4HeaderLen {
+	proto, headerLen, hdrOK := upperLayer(b)
+	if !hdrOK {
 		return errNotIPPacket
 	}
 
-	if b[9] != ipProtoTCP {
+	if proto != ipProtoTCP {
 		return errNotTCPPacket
 	}
 
 	// Don't try to parse the fragments that don't contain the TCP header.
-	fragOffset := binary.BigEndian.Uint16(b[6:8]) & 0x1fff
-	if fragOffset != 0 {
+	if binary.BigEndian.Uint16(b[6:8])&0x1fff != 0 {
 		return errNotTCPPacket
-	}
-
-	headerLen := int(b[0]&0x0f) * 4
-	if headerLen < ipv4HeaderLen || headerLen > len(b) {
-		return errNotIPPacket
 	}
 
 	msgLen := int(binary.BigEndian.Uint16(b[2:4]))
@@ -686,17 +806,32 @@ func parseIPv4PacketInto(b []byte, p *packet) (err error) {
 	src := netip.AddrFrom4([4]byte(b[12:16]))
 	dst := netip.AddrFrom4([4]byte(b[16:20]))
 
-	return parseTCPPacketInto(b[headerLen:msgLen], src, dst, p)
+	err = parseTCPPacketInto(b[headerLen:msgLen], src, dst, p)
+	if err != nil {
+		return err
+	}
+
+	// The more-fragments flag means that the TCP segment continues in the
+	// fragments that cannot be inspected.
+	p.fragmented = binary.BigEndian.Uint16(b[6:8])&0x2000 != 0
+
+	return nil
 }
 
-// parseIPv6PacketInto parses an IPv6 packet into p.  The packets with
-// extension headers are not parsed and are considered not TCP.
+// parseIPv6PacketInto parses an IPv6 packet into p.  The extension headers
+// that can precede a TCP segment are skipped, see [upperLayer].
 func parseIPv6PacketInto(b []byte, p *packet) (err error) {
 	if len(b) < ipv6HeaderLen {
 		return errNotIPPacket
 	}
 
-	if b[6] != ipProtoTCP {
+	proto, headerLen, hdrOK := upperLayer(b)
+	if !hdrOK {
+		// The packet is an IP packet, but its upper layer cannot be reached.
+		return errNotTCPPacket
+	}
+
+	if proto != ipProtoTCP {
 		return errNotTCPPacket
 	}
 
@@ -704,11 +839,14 @@ func parseIPv6PacketInto(b []byte, p *packet) (err error) {
 	if msgLen > len(b) {
 		msgLen = len(b)
 	}
+	if headerLen > msgLen {
+		return errNotTCPPacket
+	}
 
 	src := netip.AddrFrom16([16]byte(b[8:24]))
 	dst := netip.AddrFrom16([16]byte(b[24:40]))
 
-	return parseTCPPacketInto(b[ipv6HeaderLen:msgLen], src, dst, p)
+	return parseTCPPacketInto(b[headerLen:msgLen], src, dst, p)
 }
 
 // parseTCPPacketInto parses a TCP packet into p.

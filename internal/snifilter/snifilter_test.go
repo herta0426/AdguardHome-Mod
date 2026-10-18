@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -145,6 +146,41 @@ func TestParsePacket(t *testing.T) {
 		src:  v6Src,
 		dst:  v6Dst,
 	}, {
+		name: "ipv6_hop_by_hop",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{hopByHopHdr()}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
+		name: "ipv6_routing",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{routingHdr()}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
+		name: "ipv6_dest_opts",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{destOptsHdr()}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
+		name: "ipv6_ah",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{ahHdr()}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
+		name: "ipv6_ext_chain",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{hopByHopHdr(), routingHdr(), destOptsHdr(), ahHdr()}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
+		name: "ipv6_fragment_first",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{fragmentHdr(0, false)}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
+		name: "ipv6_fragment_first_more",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{fragmentHdr(0, true)}, []byte(data)),
+		src:  v6Src,
+		dst:  v6Dst,
+	}, {
 		name:    "ipv4_short",
 		pkt:     []byte{0x45},
 		wantErr: errNotIPPacket,
@@ -156,6 +192,30 @@ func TestParsePacket(t *testing.T) {
 		name: "ipv4_fragment",
 		// Set a non-zero fragment offset.
 		pkt:     withByte(withByte(tcpPacket4(src, dst, seq, ack, tcpFlagACK, nil), 6, 0x00), 7, 0x10),
+		wantErr: errNotTCPPacket,
+	}, {
+		name:    "ipv6_fragment_offset",
+		pkt:     tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{fragmentHdr(1, false)}, []byte(data)),
+		wantErr: errNotTCPPacket,
+	}, {
+		name:    "ipv6_esp",
+		pkt:     withByte(tcpPacket6(v6Src, v6Dst, seq, ack, tcpFlagACK, []byte(data)), 6, ipProtoESP),
+		wantErr: errNotTCPPacket,
+	}, {
+		name:    "ipv6_no_next_header",
+		pkt:     withByte(tcpPacket6(v6Src, v6Dst, seq, ack, tcpFlagACK, []byte(data)), 6, ipProtoNoNextHeader),
+		wantErr: errNotTCPPacket,
+	}, {
+		name:    "ipv6_too_many_ext",
+		pkt:     tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, repeatHdr(hopByHopHdr(), ipv6MaxExtHdrs+1), []byte(data)),
+		wantErr: errNotTCPPacket,
+	}, {
+		name:    "ipv6_ext_overrun",
+		pkt:     tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{{ipProtoHopByHop, 0xff, 0, 0, 0, 0, 0, 0}}, []byte(data)),
+		wantErr: errNotTCPPacket,
+	}, {
+		name:    "ipv6_ah_overrun",
+		pkt:     tcpPacket6Ext(v6Src, v6Dst, seq, ack, tcpFlagACK, [][]byte{{ipProtoAH, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}, []byte(data)),
 		wantErr: errNotTCPPacket,
 	}, {
 		name:    "unknown_version",
@@ -186,6 +246,83 @@ func TestParsePacket(t *testing.T) {
 			assert.Equal(t, []byte(data), p.payload)
 		})
 	}
+}
+
+// TestParsePacket_fragmented tests that only the first fragments of the
+// fragmented IPv4 packets are marked as such.
+func TestParsePacket_fragmented(t *testing.T) {
+	t.Parallel()
+
+	src := netip.MustParseAddrPort("10.0.0.1:12345")
+	dst := netip.MustParseAddrPort("192.0.2.1:443")
+	v6Src := netip.MustParseAddrPort("[2001:db8::1]:12345")
+	v6Dst := netip.MustParseAddrPort("[2001:db8::2]:443")
+
+	testCases := []struct {
+		name       string
+		pkt        []byte
+		fragmented bool
+	}{{
+		name: "ipv4",
+		pkt:  tcpPacket4(src, dst, 1, 1, tcpFlagACK, nil),
+	}, {
+		name:       "ipv4_first_fragment",
+		pkt:        withByte(tcpPacket4(src, dst, 1, 1, tcpFlagACK, nil), 6, 0x20),
+		fragmented: true,
+	}, {
+		name: "ipv6_first_fragment",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{fragmentHdr(0, true)}, nil),
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, err := parsePacket(tc.pkt)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.fragmented, p.fragmented)
+		})
+	}
+}
+
+// TestUpperLayer tests the extraction of the upper layer from a raw IP packet
+// and the robustness of the parsers against the truncated packets.
+func TestUpperLayer(t *testing.T) {
+	t.Parallel()
+
+	src := netip.MustParseAddrPort("10.0.0.1:12345")
+	dst := netip.MustParseAddrPort("192.0.2.1:443")
+	v6Src := netip.MustParseAddrPort("[2001:db8::1]:12345")
+	v6Dst := netip.MustParseAddrPort("[2001:db8::2]:443")
+
+	extHdrs := [][]byte{hopByHopHdr(), routingHdr(), destOptsHdr(), ahHdr()}
+	// The lengths of the extension headers above.
+	const extLen = 8 + 8 + 8 + 12
+
+	pkt4 := tcpPacket4(src, dst, 1, 1, tcpFlagACK, nil)
+	proto, off, ok := upperLayer(pkt4)
+	require.True(t, ok)
+	assert.Equal(t, uint8(ipProtoTCP), proto)
+	assert.Equal(t, ipv4HeaderLen, off)
+
+	pkt6 := tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, extHdrs, nil)
+	proto, off, ok = upperLayer(pkt6)
+	require.True(t, ok)
+	assert.Equal(t, uint8(ipProtoTCP), proto)
+	assert.Equal(t, ipv6HeaderLen+extLen, off)
+
+	assert.NotPanics(t, func() {
+		for i := range pkt6 {
+			_, _, _ = upperLayer(pkt6[:i])
+		}
+	})
+
+	assert.NotPanics(t, func() {
+		for i := range pkt6 {
+			_, _ = parsePacket(pkt6[:i])
+		}
+	})
 }
 
 // TestFilter_isTLSHandshake tests the fast path that releases the packets that
@@ -220,6 +357,56 @@ func TestFilter_isTLSHandshake(t *testing.T) {
 		name: "ipv6_hello",
 		pkt:  tcpPacket6(v6Src, v6Dst, 1, 1, tcpFlagACK, hello),
 		want: true,
+	}, {
+		name: "ipv6_hop_by_hop_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{hopByHopHdr()}, hello),
+		want: true,
+	}, {
+		name: "ipv6_routing_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{routingHdr()}, hello),
+		want: true,
+	}, {
+		name: "ipv6_dest_opts_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{destOptsHdr()}, hello),
+		want: true,
+	}, {
+		name: "ipv6_ah_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{ahHdr()}, hello),
+		want: true,
+	}, {
+		name: "ipv6_ext_chain_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{hopByHopHdr(), routingHdr(), destOptsHdr(), ahHdr()}, hello),
+		want: true,
+	}, {
+		name: "ipv6_fragment_first_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{fragmentHdr(0, true)}, hello),
+		want: true,
+	}, {
+		name: "ipv6_fragment_offset_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{fragmentHdr(1, false)}, hello),
+		want: false,
+	}, {
+		name: "ipv6_esp_hello",
+		pkt:  withByte(tcpPacket6(v6Src, v6Dst, 1, 1, tcpFlagACK, hello), 6, ipProtoESP),
+		want: false,
+	}, {
+		name: "ipv6_no_next_header_hello",
+		pkt:  withByte(tcpPacket6(v6Src, v6Dst, 1, 1, tcpFlagACK, hello), 6, ipProtoNoNextHeader),
+		want: false,
+	}, {
+		name: "ipv6_too_many_ext_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, repeatHdr(hopByHopHdr(), ipv6MaxExtHdrs+1), hello),
+		want: false,
+	}, {
+		name: "ipv6_ext_overrun_hello",
+		pkt:  tcpPacket6Ext(v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{{ipProtoHopByHop, 0xff, 0, 0, 0, 0, 0, 0}}, hello),
+		want: false,
+	}, {
+		name: "ipv6_truncated_ext_hello",
+		pkt: tcpPacket6Ext(
+			v6Src, v6Dst, 1, 1, tcpFlagACK, [][]byte{hopByHopHdr()}, hello,
+		)[:ipv6HeaderLen+4],
+		want: false,
 	}, {
 		name: "other_port",
 		pkt:  tcpPacket4(src, dst80, 1, 1, tcpFlagACK, hello),
@@ -411,6 +598,102 @@ func tcpPacket6(
 	pkt = append(pkt, dstAddr[:]...)
 
 	return append(pkt, seg...)
+}
+
+// tcpPacket6Ext returns a raw IPv6 packet with a TCP segment that follows the
+// IPv6 extension headers extHdrs.  The first byte of each header in extHdrs
+// must be the type of that header, see the ipProto constants, while the rest of
+// it is used as is.  The next-header fields of the headers and of the IPv6
+// header are filled in by the function, so the caller doesn't chain them.
+func tcpPacket6Ext(
+	src, dst netip.AddrPort,
+	seq, ack uint32,
+	flags uint8,
+	extHdrs [][]byte,
+	payload []byte,
+) (pkt []byte) {
+	srcAddr, dstAddr := src.Addr().As16(), dst.Addr().As16()
+	seg := tcpSegmentBytes(src, dst, seq, ack, flags, payload)
+
+	first := uint8(ipProtoTCP)
+	if len(extHdrs) > 0 {
+		first = extHdrs[0][0]
+	}
+
+	hdrs := make([][]byte, len(extHdrs))
+	extLen := 0
+	for i, h := range extHdrs {
+		next := uint8(ipProtoTCP)
+		if i+1 < len(extHdrs) {
+			next = extHdrs[i+1][0]
+		}
+
+		hdr := slices.Clone(h)
+		// The first byte holds the type of the header, replace it with the
+		// next-header field it stands for.
+		hdr[0] = next
+
+		hdrs[i] = hdr
+		extLen += len(hdr)
+	}
+
+	pkt = make([]byte, 0, ipv6HeaderLen+extLen+len(seg))
+	pkt = append(pkt, 0x60, 0, 0, 0)
+	pkt = binary.BigEndian.AppendUint16(pkt, uint16(extLen+len(seg)))
+	// The next header and the hop limit.
+	pkt = append(pkt, first, 64)
+	pkt = append(pkt, srcAddr[:]...)
+	pkt = append(pkt, dstAddr[:]...)
+
+	for _, h := range hdrs {
+		pkt = append(pkt, h...)
+	}
+
+	return append(pkt, seg...)
+}
+
+// hopByHopHdr returns an IPv6 hop-by-hop options header without options.
+func hopByHopHdr() []byte {
+	return []byte{ipProtoHopByHop, 0, 0, 0, 0, 0, 0, 0}
+}
+
+// routingHdr returns an IPv6 routing header without addresses.
+func routingHdr() []byte {
+	return []byte{ipProtoRouting, 0, 0, 0, 0, 0, 0, 0}
+}
+
+// destOptsHdr returns an IPv6 destination options header without options.
+func destOptsHdr() []byte {
+	return []byte{ipProtoDestOpts, 0, 0, 0, 0, 0, 0, 0}
+}
+
+// ahHdr returns a 12-byte IPv6 authentication header.
+func ahHdr() []byte {
+	// The length field of the authentication header is counted in 4-byte units
+	// minus two.
+	return []byte{ipProtoAH, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+}
+
+// fragmentHdr returns an 8-byte IPv6 fragment header.  offset is the fragment
+// offset counted in 8-byte units.
+func fragmentHdr(offset uint16, more bool) (hdr []byte) {
+	hdr = []byte{ipProtoFragment, 0, 0, 0, 0, 0, 0, 0}
+	binary.BigEndian.PutUint16(hdr[2:4], offset<<3)
+	if more {
+		hdr[3] |= 0x01
+	}
+
+	return hdr
+}
+
+// repeatHdr returns n copies of the IPv6 extension header hdr.
+func repeatHdr(hdr []byte, n int) (hdrs [][]byte) {
+	hdrs = make([][]byte, n)
+	for i := range hdrs {
+		hdrs[i] = slices.Clone(hdr)
+	}
+
+	return hdrs
 }
 
 // tcpSegmentBytes returns a TCP header with payload.
