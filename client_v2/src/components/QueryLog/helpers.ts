@@ -24,7 +24,14 @@ const parseLogDate = (time: string): Date | null => {
     return isValid(parsedTime) ? parsedTime : null;
 };
 
-export type QueryStatusKey = 'all' | 'allowed' | 'processed' | 'blocked' | 'rewritten' | 'error';
+export type QueryStatusKey =
+    | 'all'
+    | 'allowed'
+    | 'processed'
+    | 'blocked'
+    | 'sni'
+    | 'rewritten'
+    | 'error';
 
 export type QueryReasonKey =
     | 'all'
@@ -48,6 +55,8 @@ export const getQueryStatusLabel = (statusKey: Exclude<QueryStatusKey, 'all'>): 
             return intl.getMessage('query_log_processed');
         case 'blocked':
             return intl.getMessage('query_log_blocked');
+        case 'sni':
+            return intl.getMessage('query_log_sni');
         case 'rewritten':
             return intl.getMessage('query_log_rewritten');
         case 'error':
@@ -205,9 +214,8 @@ export const getQueryStatusKey = (
         case FILTERED_STATUS.NOT_FILTERED_NOT_FOUND:
             return 'processed';
         case FILTERED_STATUS.FILTERED_SNI:
-            return 'blocked';
         case FILTERED_STATUS.NOT_FILTERED_SNI:
-            return 'processed';
+            return 'sni';
         case FILTERED_STATUS.NOT_FILTERED_ERROR:
         case FILTERED_STATUS.FILTERED_INVALID:
             return 'error';

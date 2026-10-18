@@ -63,14 +63,10 @@ const [state, setState] = createStore<QueryLogsState>(initialState);
 
 /** Maps frontend status filter → exact backend reason strings */
 const STATUS_TO_REASONS: Record<string, string[]> = {
-    blocked: [
-        'FilteredBlackList',
-        'FilteredSafeBrowsing',
-        'FilteredParental',
-        'FilteredSNI',
-    ],
+    blocked: ['FilteredBlackList', 'FilteredSafeBrowsing', 'FilteredParental'],
     rewritten: ['Rewrite', 'RewriteEtcHosts', 'RewriteRule'],
-    processed: ['NotFilteredNotFound', 'NotFilteredSNI'],
+    processed: ['NotFilteredNotFound'],
+    sni: ['FilteredSNI', 'NotFilteredSNI'],
     allowed: ['NotFilteredWhiteList'],
     error: ['NotFilteredError', 'FilteredInvalid'],
     all: [],

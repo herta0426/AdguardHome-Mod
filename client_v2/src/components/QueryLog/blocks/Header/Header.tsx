@@ -52,6 +52,12 @@ const STATUS_OPTIONS = [
         },
     },
     {
+        value: 'sni',
+        get label() {
+            return intl.getMessage('query_log_sni');
+        },
+    },
+    {
         value: 'rewritten',
         get label() {
             return intl.getMessage('query_log_rewritten');
