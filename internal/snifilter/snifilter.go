@@ -36,12 +36,41 @@ const (
 	// per connection.
 	maxHandshakeSize = 1 << 15
 
+	// maxHandshakeBytes is the maximum number of the handshake bytes that the
+	// connection table keeps in total, including the out-of-order segments.
+	maxHandshakeBytes = 16 << 20
+
 	// maxFlows is the maximum number of connections tracked at the same time.
 	maxFlows = 1 << 14
+
+	// maxFlowPendingSegs is the maximum number of the out-of-order segments
+	// kept per connection.
+	maxFlowPendingSegs = 4
+
+	// maxPendingBytes is the maximum number of bytes kept in the
+	// out-of-order segments of a single connection.
+	maxPendingBytes = 4096
+
+	// maxPendingFlows is the maximum number of connections that may wait for
+	// the missing segments at the same time.
+	maxPendingFlows = 256
 
 	// flowTTL is the time during which the state of a connection is kept
 	// after the last packet of it was inspected.
 	flowTTL = 1 * time.Minute
+
+	// flowsCheckInterval is the interval at which the state of the
+	// connections that are not active anymore is removed.
+	flowsCheckInterval = 30 * time.Second
+
+	// evictBatch is the number of the connections removed at once when the
+	// connection table overflows, see [evictBatchFor].
+	evictBatch = maxFlows / 8
+
+	// overflowLogInterval is the number of the connections that were not
+	// inspected because of the exhausted budgets after which the condition is
+	// logged once, so that a flood of the packets doesn't flood the log too.
+	overflowLogInterval = 1024
 )
 
 // TCP flags used by the filter.
@@ -210,6 +239,22 @@ type Filter struct {
 	// query log is not available.
 	queryLog querylog.QueryLog
 
+	// bufferedBytes is the total number of the handshake bytes kept in the
+	// connection table.  It's protected by mu.
+	bufferedBytes int64
+
+	// pendingFlows is the number of the connections that wait for the missing
+	// segments.  It's protected by mu.
+	pendingFlows int
+
+	// lastExpire is the time when the outdated connections were removed last
+	// time.  It's protected by mu.
+	lastExpire time.Time
+
+	// overflowCount is the number of the connections that were not inspected
+	// because of the exhausted budgets.  It's protected by mu.
+	overflowCount uint64
+
 	ports    []uint16
 	uids     []string
 	queueNum uint16
@@ -238,14 +283,40 @@ type flow struct {
 	// handshake is the accumulated client's handshake data.
 	handshake []byte
 
+	// pending are the out-of-order segments of the handshake.  They are kept
+	// until the missing bytes arrive, and the order is not significant.
+	pending []pendingSeg
+
 	// seen is the time when the last packet of the connection was inspected.
 	seen time.Time
+
+	// nextSeq is the sequence number of the byte that must follow the last
+	// byte of handshake.  It's only meaningful if seqKnown is true.
+	nextSeq uint32
+
+	// buffered is the number of bytes in the payloads of pending.
+	buffered int
+
+	// seqKnown is true if nextSeq has been synchronized with the sequence
+	// number of a packet of the connection.
+	seqKnown bool
 
 	// decided is true if the verdict for the connection is already known.
 	decided bool
 
 	// blocked is true if the connection must be dropped.
 	blocked bool
+}
+
+// pendingSeg is an out-of-order TCP segment kept until the missing bytes of the
+// handshake arrive.
+type pendingSeg struct {
+	// data is the payload of the segment.  It's a copy of the bytes of the
+	// packet, since the kernel reuses its buffer.
+	data []byte
+
+	// seq is the sequence number of the first byte of data.
+	seq uint32
 }
 
 // New returns a new SNI filter.  c must not be nil.
@@ -315,7 +386,7 @@ func (f *Filter) Shutdown(ctx context.Context) {
 	f.stopFirewall(ctx)
 
 	f.mu.Lock()
-	clear(f.flows)
+	f.clearLocked()
 	f.mu.Unlock()
 }
 
@@ -393,9 +464,14 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 	f.mu.Lock()
 	fl := f.flows[key]
 	if fl == nil {
-		fl = &flow{}
-		f.evictLocked(now)
-		f.flows[key] = fl
+		fl = f.newFlowLocked(key, now)
+		if fl == nil {
+			// The budgets of the connection table are exhausted, see
+			// [Filter.newFlowLocked].
+			f.mu.Unlock()
+
+			return res
+		}
 	}
 	fl.seen = now
 
@@ -410,8 +486,12 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 		return res
 	}
 
-	if len(p.payload) > 0 && len(fl.handshake) < maxHandshakeSize {
-		fl.handshake = append(fl.handshake, p.payload...)
+	if !f.addSegmentLocked(fl, p) {
+		// The packet has added nothing to the handshake, so there is nothing
+		// new to sniff: it's either a repeated or an out-of-order segment.
+		f.mu.Unlock()
+
+		return res
 	}
 	handshake := fl.handshake
 	f.mu.Unlock()
@@ -456,9 +536,240 @@ func (f *Filter) decide(key flowKey, blocked bool) {
 	if fl != nil {
 		fl.decided = true
 		fl.blocked = blocked
-		fl.handshake = nil
+		f.releaseLocked(fl)
 	}
 	f.mu.Unlock()
+}
+
+// newFlowLocked adds the connection identified by key to the table and returns
+// it.  It returns nil if the connection must not be inspected: either nothing
+// has been added because the table is full, or the connection has been recorded
+// as a decided and accepted one because the memory budget is exhausted.  f.mu
+// must be locked.
+func (f *Filter) newFlowLocked(key flowKey, now time.Time) (fl *flow) {
+	if !f.evictLocked(now, maxFlows) {
+		f.skipFlowLocked("flow_table_full")
+
+		return nil
+	}
+
+	fl = &flow{seen: now}
+	if !f.canBufferLocked() {
+		// The handshake data kept in the table has already reached the
+		// global budget, so the connection is not inspected.  The verdict
+		// is a fail-open one, since the memory limits must not stop the
+		// traffic, and the connection is recorded as decided to keep the
+		// rest of its packets on the fast path.
+		fl.decided = true
+		f.flows[key] = fl
+		f.skipFlowLocked("memory_budget")
+
+		return nil
+	}
+
+	f.flows[key] = fl
+
+	return fl
+}
+
+// canBufferLocked returns true if a new connection may keep its handshake data.
+// f.mu must be locked.
+func (f *Filter) canBufferLocked() (ok bool) {
+	return f.bufferedBytes < maxHandshakeBytes && f.pendingFlows < maxPendingFlows
+}
+
+// skipFlowLocked records the connection that was not inspected because of the
+// exhausted budgets and logs the condition periodically.  f.mu must be locked.
+func (f *Filter) skipFlowLocked(reason string) {
+	f.overflowCount++
+	if f.overflowCount != 1 && f.overflowCount%overflowLogInterval != 0 {
+		return
+	}
+
+	f.logger.Warn(
+		"sni filter is over its budgets, the connections are not inspected",
+		"reason", reason,
+		"skipped", f.overflowCount,
+		"flows", len(f.flows),
+		"buffered_bytes", f.bufferedBytes,
+		"pending_flows", f.pendingFlows,
+	)
+}
+
+// seqDiff returns the distance from a to b, that is a - b modulo 2^{32}, as the
+// TCP sequence numbers wrap around.  The result is never the minimum int32, so
+// that its negation is safe.
+func seqDiff(a, b uint32) (d int64) {
+	d = int64(int32(a - b))
+	if d == -1<<31 {
+		return 1 << 31
+	}
+
+	return d
+}
+
+// addSegmentLocked adds the payload of the packet p to the handshake of fl,
+// dropping the repeated bytes and keeping the out-of-order segments until the
+// missing ones arrive.  changed is true if the handshake has grown, in which case
+// there is something new to sniff.  f.mu must be locked.
+//
+// The rule that sends the packets to the queue filters the SYN segments out, so
+// the sequence number of the first segment seen is the best estimate of the
+// beginning of the handshake, and the segments that arrive before that estimate
+// are dropped.
+func (f *Filter) addSegmentLocked(fl *flow, p *packet) (changed bool) {
+	data := p.payload
+	if len(data) == 0 || len(fl.handshake) >= maxHandshakeSize {
+		return false
+	}
+
+	prevLen := len(fl.handshake)
+
+	if !fl.seqKnown {
+		fl.seqKnown = true
+		fl.nextSeq = p.seq
+		if p.flags&tcpFlagSYN != 0 {
+			fl.nextSeq++
+		}
+	}
+
+	// The comparison must be a signed one, since the sequence numbers wrap
+	// around.
+	switch diff := seqDiff(p.seq, fl.nextSeq); {
+	case diff == 0:
+		// The segment continues the handshake.
+		f.appendHandshakeLocked(fl, data)
+		f.drainPendingLocked(fl)
+	case diff < 0:
+		// The segment starts before the expected byte, so it either
+		// overlaps the data that is already there or repeats it.  Only the
+		// tail of it is new.
+		if off := -diff; off < int64(len(data)) {
+			f.appendHandshakeLocked(fl, data[off:])
+			f.drainPendingLocked(fl)
+		}
+	default:
+		// The segment is ahead of the expected byte, so the segment that
+		// precedes it is lost or reordered.  Keep it until it arrives.
+		f.bufferSegmentLocked(fl, p.seq, data)
+	}
+
+	return len(fl.handshake) != prevLen
+}
+
+// appendHandshakeLocked appends data, which continues the handshake of fl, to it
+// and advances the expected sequence number.  The bytes that overflow
+// [maxHandshakeSize] are dropped, but the sequence number is still advanced.
+// f.mu must be locked.
+func (f *Filter) appendHandshakeLocked(fl *flow, data []byte) {
+	fl.nextSeq += uint32(len(data))
+
+	n := min(len(data), maxHandshakeSize-len(fl.handshake))
+	if n <= 0 {
+		return
+	}
+
+	fl.handshake = append(fl.handshake, data[:n]...)
+	f.bufferedBytes += int64(n)
+}
+
+// bufferSegmentLocked keeps the out-of-order segment with the sequence number
+// seq until the missing bytes of the handshake arrive.  The segment is dropped
+// if the connection already holds [maxFlowPendingSegs] segments or
+// [maxPendingBytes] bytes of them, in which case the connection is left to the
+// TTL.  f.mu must be locked.
+func (f *Filter) bufferSegmentLocked(fl *flow, seq uint32, data []byte) {
+	if len(fl.pending) >= maxFlowPendingSegs || fl.buffered+len(data) > maxPendingBytes {
+		return
+	}
+
+	seg := pendingSeg{seq: seq, data: slices.Clone(data)}
+	fl.pending = append(fl.pending, seg)
+	fl.buffered += len(seg.data)
+	f.bufferedBytes += int64(len(seg.data))
+
+	if len(fl.pending) == 1 {
+		f.pendingFlows++
+	}
+}
+
+// drainPendingLocked appends the kept out-of-order segments that continue the
+// handshake of fl to it, until a gap or no segments are left.  f.mu must be
+// locked.
+func (f *Filter) drainPendingLocked(fl *flow) {
+	for len(fl.pending) > 0 {
+		di := -1
+		for i, seg := range fl.pending {
+			if seqDiff(seg.seq, fl.nextSeq) <= 0 {
+				di = i
+
+				break
+			}
+		}
+		if di < 0 {
+			// All the kept segments are still ahead of the expected byte.
+			return
+		}
+
+		seg := f.removePendingLocked(fl, di)
+		// The segment may start before the expected byte, in which case only
+		// its tail is new, or it may be entirely behind it, in which case it
+		// is a duplicate.
+		if off := seqDiff(fl.nextSeq, seg.seq); off < int64(len(seg.data)) {
+			f.appendHandshakeLocked(fl, seg.data[off:])
+		}
+	}
+}
+
+// removePendingLocked removes the segment at i from the out-of-order segments of
+// fl and returns it.  f.mu must be locked.
+func (f *Filter) removePendingLocked(fl *flow, i int) (seg pendingSeg) {
+	seg = fl.pending[i]
+	fl.pending = slices.Delete(fl.pending, i, i+1)
+	fl.buffered -= len(seg.data)
+	f.bufferedBytes -= int64(len(seg.data))
+
+	if len(fl.pending) == 0 {
+		f.pendingFlows--
+	}
+
+	return seg
+}
+
+// releaseLocked drops the buffered bytes of fl and subtracts them from the
+// global accounting.  f.mu must be locked.
+func (f *Filter) releaseLocked(fl *flow) {
+	if len(fl.pending) > 0 {
+		f.pendingFlows--
+	}
+
+	f.bufferedBytes -= int64(len(fl.handshake) + fl.buffered)
+	fl.handshake = nil
+	fl.pending = nil
+	fl.buffered = 0
+}
+
+// deleteLocked removes the connection identified by key from the table and drops
+// its buffers.  ok is false if there was no such connection.  f.mu must be
+// locked.
+func (f *Filter) deleteLocked(key flowKey) (ok bool) {
+	fl, ok := f.flows[key]
+	if !ok {
+		return false
+	}
+
+	f.releaseLocked(fl)
+	delete(f.flows, key)
+
+	return true
+}
+
+// clearLocked removes all the connections and drops their buffers.  f.mu must be
+// locked.
+func (f *Filter) clearLocked() {
+	clear(f.flows)
+	f.bufferedBytes = 0
+	f.pendingFlows = 0
 }
 
 // logConnection records the inspected connection in the query log, so that the
@@ -511,22 +822,90 @@ func (f *Filter) logConnection(p *packet, host string, res *filtering.Result) {
 	})
 }
 
-// evictLocked removes the outdated connections.  f.mu must be locked.
-func (f *Filter) evictLocked(now time.Time) {
-	if len(f.flows) < maxFlows {
-		return
+// evictLocked removes the connections that are needed the least to make room
+// for a new one.  limit is the maximum number of the connections kept in the
+// table at the same time.  ok is false if the table is still full, in which case
+// the caller must not add a new connection.  f.mu must be locked.
+func (f *Filter) evictLocked(now time.Time, limit int) (ok bool) {
+	if len(f.flows) < limit {
+		return true
 	}
 
 	f.expireLocked(now)
 
-	if len(f.flows) < maxFlows {
-		return
+	if len(f.flows) < limit {
+		return true
 	}
 
-	// This should never happen unless something is very wrong with the
-	// accounting of the packets, but the memory usage must stay bounded.
-	f.logger.Warn("too many tracked connections, resetting the state")
-	clear(f.flows)
+	// The verdicts of the inspected connections are worth less than the data
+	// of the connections that are still being inspected, so the decided ones
+	// go first.
+	batch := evictBatchFor(limit)
+	removed := f.evictOldestLocked(batch, true)
+	if removed > 0 {
+		f.logEvictionLocked("decided", removed)
+	}
+
+	if len(f.flows) < limit {
+		return true
+	}
+
+	removed = f.evictOldestLocked(batch, false)
+	if removed > 0 {
+		f.logEvictionLocked("undecided", removed)
+	}
+
+	return len(f.flows) < limit
+}
+
+// evictBatchFor returns the number of the connections removed from the table
+// with limit connections at once.  It's a fraction of [evictBatch], but at least
+// one connection, so that the small limits used in the tests make progress.
+func evictBatchFor(limit int) (batch int) {
+	batch = limit * evictBatch / maxFlows
+	if batch < 1 {
+		return 1
+	}
+
+	return batch
+}
+
+// evictOldestLocked removes up to batch connections with the given decided state
+// starting from the ones that were seen the longest time ago.  It returns the
+// number of the removed connections.  f.mu must be locked.
+func (f *Filter) evictOldestLocked(batch int, decided bool) (removed int) {
+	keys := make([]flowKey, 0, len(f.flows))
+	for k, fl := range f.flows {
+		if fl.decided == decided {
+			keys = append(keys, k)
+		}
+	}
+
+	// The allocation above only happens when the table overflows, which is
+	// the emergency path, and it is bounded by the size of the table.
+	slices.SortFunc(keys, func(a, b flowKey) (res int) {
+		return f.flows[a].seen.Compare(f.flows[b].seen)
+	})
+
+	removed = min(len(keys), batch)
+	for _, k := range keys[:removed] {
+		f.deleteLocked(k)
+	}
+
+	return removed
+}
+
+// logEvictionLocked records the eviction of the connections.  f.mu must be
+// locked.
+func (f *Filter) logEvictionLocked(reason string, removed int) {
+	f.logger.Warn(
+		"evicting the sni filter connections",
+		"reason", reason,
+		"removed", removed,
+		"flows", len(f.flows),
+		"buffered_bytes", f.bufferedBytes,
+		"pending_flows", f.pendingFlows,
+	)
 }
 
 // expireFlows removes the state of the connections that are not active
@@ -538,11 +917,18 @@ func (f *Filter) expireFlows() {
 	f.expireLocked(time.Now())
 }
 
-// expireLocked removes the outdated connections.  f.mu must be locked.
+// expireLocked removes the outdated connections.  The pass over the whole table
+// runs at most once per [flowsCheckInterval], since the new connections trigger
+// it as well.  f.mu must be locked.
 func (f *Filter) expireLocked(now time.Time) {
+	if now.Sub(f.lastExpire) < flowsCheckInterval {
+		return
+	}
+	f.lastExpire = now
+
 	for k, fl := range f.flows {
 		if now.Sub(fl.seen) > flowTTL {
-			delete(f.flows, k)
+			f.deleteLocked(k)
 		}
 	}
 }
@@ -591,6 +977,80 @@ func resetSegments(p *packet) (toClient, toServer rstSegment) {
 	}
 
 	return toClient, toServer
+}
+
+// flowKeyOf returns the connection that b, a raw IPv4 or IPv6 packet, belongs
+// to.  ok is false if b cannot be a segment of an inspected TCP connection, for
+// example if it isn't a TCP packet, if it goes to a port the filter doesn't look
+// at, or if its TCP header is malformed.  flowKeyOf never allocates and never
+// panics, because its input comes from the network.
+func (f *Filter) flowKeyOf(b []byte) (k flowKey, ok bool) {
+	proto, ipHdrLen, hdrOK := upperLayer(b)
+	if !hdrOK || proto != ipProtoTCP {
+		return flowKey{}, false
+	}
+
+	// Only the first fragment of an IPv4 packet carries the TCP header, see
+	// [Filter.isTLSHandshake].
+	if b[0]>>4 == 4 && binary.BigEndian.Uint16(b[6:8])&0x1fff != 0 {
+		return flowKey{}, false
+	}
+
+	if len(b) < ipHdrLen+tcpHeaderLen {
+		return flowKey{}, false
+	}
+	tcp := b[ipHdrLen:]
+	if !f.isInspectedPort(binary.BigEndian.Uint16(tcp[2:4])) {
+		return flowKey{}, false
+	}
+
+	if int(tcp[12]>>4)*4 < tcpHeaderLen {
+		return flowKey{}, false
+	}
+
+	var src, dst netip.Addr
+	switch b[0] >> 4 {
+	case 4:
+		src = netip.AddrFrom4([4]byte(b[12:16]))
+		dst = netip.AddrFrom4([4]byte(b[16:20]))
+	case 6:
+		src = netip.AddrFrom16([16]byte(b[8:24]))
+		dst = netip.AddrFrom16([16]byte(b[24:40]))
+	default:
+		return flowKey{}, false
+	}
+
+	k = flowKey{
+		src: netip.AddrPortFrom(src, binary.BigEndian.Uint16(tcp[0:2])),
+		dst: netip.AddrPortFrom(dst, binary.BigEndian.Uint16(tcp[2:4])),
+	}
+
+	return k, true
+}
+
+// needsInspect returns true if b, a raw IPv4 or IPv6 packet, either begins a TLS
+// ClientHello or continues a connection that still has to be inspected.  It is
+// the gate of the packet-processing path: it compares the first bytes of the
+// packet and, at most, looks the connection up in the table, so the packets that
+// cannot carry a server name are released without parsing.
+func (f *Filter) needsInspect(b []byte) (ok bool) {
+	// The fast path first: a new connection is only worth a look if it begins
+	// a TLS ClientHello.
+	if f.isTLSHandshake(b) {
+		return true
+	}
+
+	key, ok := f.flowKeyOf(b)
+	if !ok {
+		return false
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	fl := f.flows[key]
+
+	return fl != nil && (!fl.decided || fl.blocked)
 }
 
 // isTLSHandshake checks whether b, a raw IPv4 or IPv6 packet, may carry the
