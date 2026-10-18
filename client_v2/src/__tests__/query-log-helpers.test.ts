@@ -27,9 +27,9 @@ describe('getQueryStatusKey', () => {
         expect(getQueryStatusKey(FILTERED_STATUS.NOT_FILTERED_NOT_FOUND)).toBe('processed');
     });
 
-    test('maps SNI entries to blocked/processed statuses', () => {
-        expect(getQueryStatusKey(FILTERED_STATUS.FILTERED_SNI)).toBe('blocked');
-        expect(getQueryStatusKey(FILTERED_STATUS.NOT_FILTERED_SNI)).toBe('processed');
+    test('maps both SNI reasons to the dedicated sni status', () => {
+        expect(getQueryStatusKey(FILTERED_STATUS.FILTERED_SNI)).toBe('sni');
+        expect(getQueryStatusKey(FILTERED_STATUS.NOT_FILTERED_SNI)).toBe('sni');
     });
 
     test('falls back to rewritten when the row has an original response', () => {
@@ -78,16 +78,18 @@ describe('query log label helpers', () => {
         const getMessageSpy = vi.spyOn(intl, 'getMessage').mockImplementation((key) => key);
 
         expect(getQueryStatusLabel('blocked')).toBe('query_log_blocked');
+        expect(getQueryStatusLabel('sni')).toBe('query_log_sni');
         expect(getQueryStatusLabel('allowed')).toBe('query_log_allowed');
         expect(getQueryStatusLabel('processed')).toBe('query_log_processed');
         expect(getQueryStatusLabel('rewritten')).toBe('query_log_rewritten');
         expect(getQueryStatusLabel('error')).toBe('error');
 
         expect(getMessageSpy).toHaveBeenNthCalledWith(1, 'query_log_blocked');
-        expect(getMessageSpy).toHaveBeenNthCalledWith(2, 'query_log_allowed');
-        expect(getMessageSpy).toHaveBeenNthCalledWith(3, 'query_log_processed');
-        expect(getMessageSpy).toHaveBeenNthCalledWith(4, 'query_log_rewritten');
-        expect(getMessageSpy).toHaveBeenNthCalledWith(5, 'error');
+        expect(getMessageSpy).toHaveBeenNthCalledWith(2, 'query_log_sni');
+        expect(getMessageSpy).toHaveBeenNthCalledWith(3, 'query_log_allowed');
+        expect(getMessageSpy).toHaveBeenNthCalledWith(4, 'query_log_processed');
+        expect(getMessageSpy).toHaveBeenNthCalledWith(5, 'query_log_rewritten');
+        expect(getMessageSpy).toHaveBeenNthCalledWith(6, 'error');
     });
 
     test('maps reason keys through static intl keys and keeps none literal', () => {
@@ -193,13 +195,14 @@ describe('filterLogsByStatus', () => {
         expect(filterLogsByStatus(logs, 'all')).toHaveLength(4);
     });
 
-    test('filters SNI entries into blocked and processed categories', () => {
+    test('filters SNI entries into their own category only', () => {
         const sniLogs = [
             { reason: FILTERED_STATUS.FILTERED_SNI, originalResponse: [] },
             { reason: FILTERED_STATUS.NOT_FILTERED_SNI, originalResponse: [] },
         ] as any[];
 
-        expect(filterLogsByStatus(sniLogs, 'blocked')).toEqual([sniLogs[0]]);
-        expect(filterLogsByStatus(sniLogs, 'processed')).toEqual([sniLogs[1]]);
+        expect(filterLogsByStatus(sniLogs, 'sni')).toEqual(sniLogs);
+        expect(filterLogsByStatus(sniLogs, 'blocked')).toEqual([]);
+        expect(filterLogsByStatus(sniLogs, 'processed')).toEqual([]);
     });
 });

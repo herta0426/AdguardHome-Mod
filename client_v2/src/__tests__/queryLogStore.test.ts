@@ -71,33 +71,38 @@ describe('queryLogs store', () => {
         await setFilteredLogs({ search: '', status: 'blocked', reason: 'all' });
 
         const lastCall = (queryLog as any).mock.calls.at(-1)[0];
-        expect(queryLog).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                reason: expect.arrayContaining([
-                    'FilteredBlackList',
-                    'FilteredSafeBrowsing',
-                    'FilteredParental',
-                    'FilteredSNI',
-                ]),
-            }),
-        );
+        expect([...lastCall.reason].sort()).toEqual([
+            'FilteredBlackList',
+            'FilteredParental',
+            'FilteredSafeBrowsing',
+        ]);
         expect(lastCall).not.toHaveProperty('response_status');
     });
 
-    it('setFilteredLogs includes SNI entries when filtering processed status', async () => {
+    it('setFilteredLogs leaves SNI entries out of the processed status', async () => {
         (queryLog as any).mockReset();
         (queryLog as any).mockResolvedValue({
-            data: [{ reason: 'NotFilteredSNI', question: {} }],
+            data: [{ reason: 'NotFilteredNotFound', question: {} }],
             oldest: '',
         });
 
         await setFilteredLogs({ search: '', status: 'processed', reason: 'all' });
 
-        expect(queryLog).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                reason: expect.arrayContaining(['NotFilteredNotFound', 'NotFilteredSNI']),
-            }),
-        );
+        const lastCall = (queryLog as any).mock.calls.at(-1)[0];
+        expect(lastCall.reason).toEqual(['NotFilteredNotFound']);
+    });
+
+    it('setFilteredLogs sends both SNI reasons for the sni status', async () => {
+        (queryLog as any).mockReset();
+        (queryLog as any).mockResolvedValue({
+            data: [{ reason: 'FilteredSNI', question: {} }],
+            oldest: '',
+        });
+
+        await setFilteredLogs({ search: '', status: 'sni', reason: 'all' });
+
+        const lastCall = (queryLog as any).mock.calls.at(-1)[0];
+        expect([...lastCall.reason].sort()).toEqual(['FilteredSNI', 'NotFilteredSNI']);
     });
 
     it('does not mark the log as complete when additional loading stops', async () => {

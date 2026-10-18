@@ -212,6 +212,9 @@ export const QUERY_LOG_STATUS_FILTER = {
     BLOCKED: {
         QUERY: 'blocked',
     },
+    SNI: {
+        QUERY: 'sni',
+    },
     REWRITTEN: {
         QUERY: 'rewritten',
     },
