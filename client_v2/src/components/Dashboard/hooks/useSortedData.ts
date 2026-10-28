@@ -12,9 +12,11 @@ export const useSortedData = <T extends SortableItem>(
     data: () => T[],
     limit: number = DEFAULT_VISIBLE_ITEMS,
 ): { sortedData: () => T[]; hasMore: () => boolean } => {
+    // `toSorted` is ES2023 (Chrome/WebView 110+) and the browserslist targets
+    // do not guarantee it, so copy first — the source may be a store array.
     const sortedData = createMemo(() =>
-        data()
-            .toSorted((a, b) => b.count - a.count)
+        [...data()]
+            .sort((a, b) => b.count - a.count)
             .slice(0, limit),
     );
 

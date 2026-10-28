@@ -20,7 +20,7 @@ export const TopUpstreamsPage = () => {
     onMount(refreshStats);
 
     const rows = createMemo<UpstreamStat[]>(() =>
-        [...statsState.topUpstreamsResponses].toSorted((a, b) => a.name.localeCompare(b.name)),
+        [...statsState.topUpstreamsResponses].sort((a, b) => a.name.localeCompare(b.name)),
     );
 
     const columns = (): TableColumn<UpstreamStat>[] => [

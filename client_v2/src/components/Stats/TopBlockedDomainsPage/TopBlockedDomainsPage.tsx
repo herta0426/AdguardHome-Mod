@@ -22,7 +22,7 @@ export const TopBlockedDomainsPage = () => {
     onMount(refreshStats);
 
     const rows = createMemo<DomainStat[]>(() =>
-        [...statsState.topBlockedDomains].toSorted((a, b) => a.name.localeCompare(b.name)),
+        [...statsState.topBlockedDomains].sort((a, b) => a.name.localeCompare(b.name)),
     );
 
     const columns = (): TableColumn<DomainStat>[] => [

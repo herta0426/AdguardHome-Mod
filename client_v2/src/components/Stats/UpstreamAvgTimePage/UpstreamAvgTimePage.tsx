@@ -20,7 +20,7 @@ export const UpstreamAvgTimePage = () => {
     onMount(refreshStats);
 
     const rows = createMemo<UpstreamStat[]>(() =>
-        [...statsState.topUpstreamsAvgTime].toSorted((a, b) => a.name.localeCompare(b.name)),
+        [...statsState.topUpstreamsAvgTime].sort((a, b) => a.name.localeCompare(b.name)),
     );
 
     const columns = (): TableColumn<UpstreamStat>[] => [

@@ -22,7 +22,7 @@ export const TopQueriedDomainsPage = () => {
     onMount(refreshStats);
 
     const rows = createMemo<DomainStat[]>(() =>
-        [...statsState.topQueriedDomains].toSorted((a, b) => a.name.localeCompare(b.name)),
+        [...statsState.topQueriedDomains].sort((a, b) => a.name.localeCompare(b.name)),
     );
 
     const columns = (): TableColumn<DomainStat>[] => [
