@@ -37,8 +37,8 @@ func TestRotateCrashLog(t *testing.T) {
 
 		// The new content is one byte longer than the limit, so that the
 		// backup below is distinguishable by its size.
-		require.NoError(t, writeTestFile(path, testCrashLogMaxSize+1))
-		require.NoError(t, writeTestFile(path+crashLogBackupSuffix, 3))
+		writeTestFile(t, path, testCrashLogMaxSize+1)
+		writeTestFile(t, path+crashLogBackupSuffix, 3)
 
 		require.NoError(t, rotateCrashLog(path, testCrashLogMaxSize))
 
@@ -54,7 +54,7 @@ func TestRotateCrashLog(t *testing.T) {
 		t.Parallel()
 
 		path := filepath.Join(t.TempDir(), crashLogName)
-		require.NoError(t, writeTestFile(path, testCrashLogMaxSize-1))
+		writeTestFile(t, path, testCrashLogMaxSize-1)
 
 		require.NoError(t, rotateCrashLog(path, testCrashLogMaxSize))
 
