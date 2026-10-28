@@ -404,6 +404,41 @@ ipv4 reverse path filtering is strict
 5. 不重启 AGH 的情况下，普通浏览器流量重新出现 SNI 查询日志；
 6. 失败时保留现场，不要只记录“AGH 卡了”。
 
+#### 9.3.1 AGH 侧自己打的指标（`internal/snifilter`）
+
+这一批指标全部由 AGH 自己产生，不依赖模块脚本，也不需要额外工具。所有日志的 key 都是稳定的，可以直接 grep。
+
+| 日志 | 级别 / 周期 | 关键字段 | 说明 |
+| --- | --- | --- | --- |
+| `nfqueue state` | Debug / 10 秒 | `queue_num`、`queue_total`、`queue_threshold`、`id_seq`、`id_seq_delta`、`dropped`、`user_dropped` | 每 10 秒的队列采样，默认级别看不到，需要 verbose |
+| `the nfqueue is backed up` | Warn / 每次积压触发一次 | `queue_total`、`samples`、`id_seq`、`id_seq_per_sec`、`dropped_delta`、`user_dropped_delta` | `queue_total` 连续 3 次（≈30 秒）达到 `queue_threshold`（`maxQueueLen` 的 3/4，即 768） |
+| `the nfqueue is dropping the packets` | Warn / 每段丢包触发一次 | `dropped`、`dropped_delta`、`user_dropped`、`user_dropped_delta`、`id_seq` | 内核丢包或投递失败在增长 |
+| `sni filter counters` | Info / 60 秒，且只在计数有变化时才打 | `sni_pkts_received`、`sni_pkts_inspected`、`sni_truncated`、`sni_names_parsed`、`sni_querylog_written`、`sni_resets_sent`、`sni_verdict_errors` | 累计值，空闲时不打，所以不会刷屏 |
+| `the packet is truncated by the nfqueue copy range` | Debug / 首次 + 每 512 个 | `src`、`dst`、`payload_len`、`truncated_packets` | 包比拷贝范围长，载荷不参与握手重组，只放行 |
+
+这两个后台 goroutine（`watchQueueHealth`、`watchCounters`）都随 `Filter` 的 ctx 退出，而且**只读**：不重建队列、不 rebind、不动 iptables，见 §8.4。读不到 `/proc/net/netfilter/nfnetlink_queue`（容器里没有 procfs、非 Linux、队列刚被 unbind）时只在 Debug 记一条然后静默跳过，不影响过滤本身，也不会让进程或测试变红。
+
+判读顺序：看 60 秒的 `sni_pkts_*` 差值，不要看绝对值。
+
+1. `sni_pkts_received` 不涨：包根本没进队列。查模块规则、`queue_num` 是否与 YAML 一致、`--queue-bypass`。这时 SNI 日志本来就该是空的，和队列卡死无关。
+2. `sni_pkts_received` 涨、`sni_pkts_inspected` 不涨：包进了队列但没过 `needsInspect`（不是 TLS、端口/UID 不匹配）。这是设计内的放行，不是故障。
+3. `sni_truncated` 涨：拷贝范围太小，包被截断，载荷按设计不参与握手重组（只放行，不污染序号账本）。把 `internal/snifilter/firewall_linux.go` 的 `queueCopyRange` 调大（16384 → 32768 或更大）再观察；这类大段通常来自 GSO/LRO 合并。
+4. `sni_pkts_inspected` 涨、`sni_names_parsed` 不涨且 `sni_truncated` 不涨：ClientHello 没拼起来（跨段、乱序、或连接还没来得及看就结束）。
+5. `sni_names_parsed` 涨、`sni_querylog_written` 不涨：被 `ShouldLog` 过滤了，属于配置问题，不是抓包问题。
+6. `sni_resets_sent` 涨但客户端不快速失败：RST 没送达，查 §5 里的 raw socket 与 `rp_filter`（启动时也会有一条对应 Warn）。
+7. `sni_verdict_errors` 涨：队列需要重建，同时应能在日志里看到 `re-registering`，两者次数应该对得上。
+
+区分**队列积压**和 **DNS 侧坏了**：
+
+- `queue_total` 持续 ≥ 768 而 `id_seq` 不涨（`id_seq_per_sec` ≈ 0）：包进了队列没人收，是用户态卡住，也就是历史上“callback 卡死”的形态。
+- `queue_total` 正常、`sni_pkts_received` 也不涨、SNI 日志没了：包没到队列，先查规则和 `queue_num`，不要去怀疑解析。
+- 现场说的“只剩 SNI 在处理”：只要 `sni_pkts_received` 还在涨，就说明 netfilter 这条链路是活的；DNS 挂掉是另一条链路的问题，两者不要混为一谈。
+- `dropped` 是内核累计丢包，`user_dropped` 是投递失败，任意一个增长都要看，不要只看第 6 列。
+
+**拷贝范围**：本分支把队列的拷贝范围从内核默认的 64 KiB 显式改成 `queueCopyRange = 16384`（`internal/snifilter/firewall_linux.go`）。取值理由：OUTPUT 钩子看到的是 GSO/LRO 合并后的段，常见 4 KiB 到 64 KiB，4 KiB 太紧；16 KiB 覆盖绝大多数实际段，同时仍只有原来 64 KiB 的 1/4。所以 `/proc/net/netfilter/nfnetlink_queue` 第 5 列现在应该读到 `16384`；如果现场还是 `65531`，说明跑的是旧二进制，先确认版本再按 §2.2 读。
+
+超过拷贝范围的包**不会被静默丢掉**：解析层用 IP 头声明的长度判断“实收字节数少于声明长度”，把这种包标记为截断，`addSegmentLocked` 直接跳过它（不 append、不推进 `nextSeq`、不进 pending），`inspect` 里放行并计入 `sni_truncated`。截断只影响拷进用户态的那一份，不影响裁决和 RST；连接也不会被强行判定，所以一次能装进拷贝范围的重传仍然可以正常解析。
+
 ## 10. 代码改动优先级
 
 ### 第一批（功能正确性）

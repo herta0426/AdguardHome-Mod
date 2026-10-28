@@ -287,6 +287,9 @@ type Filter struct {
 	// reach the connection table, keeping the allocation rate low.
 	pktPool sync.Pool
 
+	// counters are the cumulative packet counters, see [Filter.watchCounters].
+	counters counters
+
 	// platform is the platform-specific state of the filter.
 	platform
 }
@@ -451,8 +454,15 @@ type packet struct {
 	// src and dst are the sender and the receiver of the packet.
 	src, dst netip.AddrPort
 
-	// payload is the TCP payload of the packet.
+	// payload is the TCP payload of the packet.  It is shorter than the
+	// payload the sender put on the wire if truncated is true.
 	payload []byte
+
+	// truncated is true if the IP header of the packet declares more bytes
+	// than the kernel has copied into the userspace, see queueCopyRange in
+	// firewall_linux.go.  The payload of such a packet cannot be used for the
+	// reassembly of the handshake.
+	truncated bool
 
 	// seq is the sequence number of the packet.
 	seq uint32
@@ -551,6 +561,21 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 		return res
 	}
 
+	if p.truncated {
+		// Only the beginning of the packet has been copied into the
+		// userspace, so its payload is shorter than the segment on the wire
+		// and cannot be added to the handshake, see queueCopyRange in
+		// firewall_linux.go.  The packet is passed through, and the
+		// connection is left undecided, so that a retransmission that fits
+		// into the copy range can still be inspected.
+		f.mu.Unlock()
+
+		f.counters.truncated.Add(1)
+		f.logTruncated(p)
+
+		return res
+	}
+
 	if !f.addSegmentLocked(fl, p) {
 		// The packet has added nothing to the handshake, so there is nothing
 		// new to sniff: it's either a repeated or an out-of-order segment.
@@ -564,6 +589,8 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 	name, err := sniffSNI(handshake)
 	switch {
 	case err == nil && name != "":
+		f.counters.sni.Add(1)
+
 		filterRes := f.checkHost(name)
 		blocked := filterRes.IsFiltered
 
@@ -688,7 +715,15 @@ func seqDiff(a, b uint32) (d int64) {
 // are dropped.
 func (f *Filter) addSegmentLocked(fl *flow, p *packet) (changed bool) {
 	data := p.payload
-	if len(data) == 0 || len(fl.handshake) >= maxHandshakeSize {
+
+	// The payload of a truncated packet is shorter than the segment the
+	// sender put on the wire, see queueCopyRange in firewall_linux.go.
+	// Appending it would advance the expected sequence number by less than
+	// the real length of the segment, so every following segment would look
+	// out of order and the hole would never be filled.  Such a packet is left
+	// out of the reassembly entirely, which keeps the sequence bookkeeping
+	// correct for the segments that do fit into the copy range.
+	if p.truncated || len(data) == 0 || len(fl.handshake) >= maxHandshakeSize {
 		return false
 	}
 
@@ -889,6 +924,8 @@ func (f *Filter) logConnection(p *packet, host string, res *filtering.Result) {
 		Dst:      dst,
 		ClientIP: p.src.Addr().AsSlice(),
 	})
+
+	f.counters.logged.Add(1)
 }
 
 // evictLocked removes the connections that are needed the least to make room
@@ -1325,7 +1362,13 @@ func parseIPv4PacketInto(b []byte, p *packet) (err error) {
 	}
 
 	msgLen := int(binary.BigEndian.Uint16(b[2:4]))
-	if msgLen > len(b) {
+
+	// The IP header keeps the real length of the packet, while the kernel may
+	// have copied only its beginning, see queueCopyRange in firewall_linux.go.
+	// Detecting that is what keeps the truncated payloads out of the
+	// reassembly, see [Filter.addSegmentLocked].
+	p.truncated = msgLen > len(b)
+	if p.truncated {
 		msgLen = len(b)
 	}
 	if headerLen > msgLen {
@@ -1365,7 +1408,11 @@ func parseIPv6PacketInto(b []byte, p *packet) (err error) {
 	}
 
 	msgLen := ipv6HeaderLen + int(binary.BigEndian.Uint16(b[4:6]))
-	if msgLen > len(b) {
+
+	// The payload length of the IPv6 header counts the real bytes of the
+	// packet, see the IPv4 case above.
+	p.truncated = msgLen > len(b)
+	if p.truncated {
 		msgLen = len(b)
 	}
 	if headerLen > msgLen {

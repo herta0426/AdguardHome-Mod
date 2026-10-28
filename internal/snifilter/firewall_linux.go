@@ -29,6 +29,19 @@ const (
 	// queue-bypass option of the rules.
 	maxQueueLen = 1024
 
+	// queueCopyRange is the number of the bytes of each packet the kernel
+	// copies into the userspace.  The filter only needs the beginning of the
+	// ClientHello to read the server name, so the whole packet doesn't have to
+	// be copied.  The segments that the OUTPUT hook sees are the ones the
+	// segmentation offload has already merged, and those are commonly from
+	// 4 KiB to 64 KiB long, so a range of 4 KiB is too tight for them.  16 KiB
+	// covers the vast majority of the real segments and is still a quarter of
+	// the 64 KiB the kernel copies by default, which is a pure kernel cost per
+	// packet.  The packets that don't fit are detected by their IP header and
+	// their payloads are kept out of the reassembly, see
+	// [Filter.addSegmentLocked].
+	queueCopyRange = 16384
+
 	// queueReadTimeout is the time the queue waits for the packets.
 	queueReadTimeout = 100 * time.Millisecond
 
@@ -81,6 +94,15 @@ func (f *Filter) startFirewall(ctx context.Context) (err error) {
 
 	f.wg.Add(1)
 	go f.watchFlows(ctx)
+
+	// The queue watcher and the counter reporter are read-only: they only
+	// log, so that a stuck queue is visible without touching it, see
+	// SNI_HANDOVER.md §8.4 and §9.3.
+	f.wg.Add(1)
+	go f.watchQueueHealth(ctx)
+
+	f.wg.Add(1)
+	go f.watchCounters(ctx)
 
 	// The ports, the UIDs, and the drop_quic setting are only used to build
 	// the rules, so they don't affect AdGuard Home anymore.
@@ -201,9 +223,13 @@ func isRecoverableQueueError(err error) (ok bool) {
 // re-registered.  stoppedFD is signaled when the receive loop can no longer
 // process packets.
 func (f *Filter) dialQueue(ctx context.Context, stoppedFD int) (nf *nfqueue.Nfqueue, err error) {
+	// MaxPacketLen of the configuration is the copy range of the kernel: the
+	// number of the bytes of each packet that are copied into the userspace.
+	// It's only used together with [nfqueue.NfQnlCopyPacket], see
+	// [queueCopyRange].
 	conf := &nfqueue.Config{
 		NfQueue:      f.queueNum,
-		MaxPacketLen: 0xffff,
+		MaxPacketLen: queueCopyRange,
 		MaxQueueLen:  maxQueueLen,
 		Copymode:     nfqueue.NfQnlCopyPacket,
 		// The family of the queue is not used by the kernel to route the
@@ -515,6 +541,8 @@ func queueFD(nf *nfqueue.Nfqueue) (fd int, err error) {
 // handlePacket processes a packet received from the kernel and reports the
 // verdict for it.
 func (f *Filter) handlePacket(nf verdictSetter, a nfqueue.Attribute) (ret int) {
+	f.counters.received.Add(1)
+
 	if a.PacketID == nil {
 		f.logger.Warn(
 			"received an nfqueue packet without an id; re-registering the queue",
@@ -541,6 +569,8 @@ func (f *Filter) handlePacket(nf verdictSetter, a nfqueue.Attribute) (ret int) {
 		pkt := *a.Payload
 		p := f.pktPool.Get().(*packet)
 		if err := parsePacketInto(pkt, p); err == nil {
+			f.counters.inspected.Add(1)
+
 			res := f.inspect(p)
 			switch res.verdict {
 			case verdictDrop:
@@ -560,6 +590,8 @@ func (f *Filter) handlePacket(nf verdictSetter, a nfqueue.Attribute) (ret int) {
 	}
 
 	if err := nf.SetVerdict(*a.PacketID, verdict); err != nil {
+		f.counters.verdictErrors.Add(1)
+
 		f.logger.Warn(
 			"setting the verdict; re-registering the queue",
 			"id",
@@ -657,7 +689,11 @@ func (f *Filter) sendReset(seg *rstSegment) {
 
 	if err != nil {
 		f.logger.Debug("sending the reset segment", "dst", seg.dst.String(), slogutil.KeyError, err)
+
+		return
 	}
+
+	f.counters.resets.Add(1)
 }
 
 // buildReset4 returns an IPv4 packet with a TCP reset segment.
