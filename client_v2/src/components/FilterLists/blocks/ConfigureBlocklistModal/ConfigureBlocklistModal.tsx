@@ -49,7 +49,7 @@ const getSelectedValues = (
 ): SelectedValues =>
     filters.reduce(
         (acc: SelectedValues, { url }: Filter) => {
-            if (Object.hasOwn(catalogSourcesToIdMap, url)) {
+            if (Object.prototype.hasOwnProperty.call(catalogSourcesToIdMap, url)) {
                 const filterId = catalogSourcesToIdMap[url];
                 acc.selectedFilterIds[filterId] = true;
                 acc.selectedSources[url] = true;

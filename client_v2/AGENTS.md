@@ -379,6 +379,16 @@ must not depend on stores or components. Helpers are pure and dependency-free.
   catch and surface a toast. Do not swallow errors silently.
 - **Logging**: `console.warn` and `console.error` are allowed; `console.log`
   is disallowed by ESLint.
+- **Browser API floor**: do not use the ES2022+/ES2023 `Object`/`Array`
+  methods — `Object.hasOwn`, `Array.prototype.toSorted` / `toReversed` /
+  `toSpliced`, `structuredClone`. The panel runs in older WebViews that do
+  not ship them, and a missing method throws, which blanks the whole page.
+  Copy the array and sort or reverse it (`[...xs].sort(...)`), and use
+  `Object.prototype.hasOwnProperty.call(obj, key)` instead of `hasOwn`.
+- **`tsconfig` targets `ESNext`**, so `tsc --noEmit` types those calls
+  happily and cannot catch them. The `no-restricted-properties` /
+  `no-restricted-globals` entries in `.eslintrc.cjs` are the only gate, so
+  extend that list rather than relying on the type checker.
 - **Static analysis gates**: ESLint, Prettier, and `tsc --noEmit` must pass.
   `@typescript-eslint/no-explicit-any` is off (legacy), but prefer concrete
   types for new code. Unused vars must be prefixed with `_`.

@@ -67,6 +67,38 @@ module.exports = {
                 ignoreTemplateLiterals: true,
             },
         ],
+        'no-restricted-properties': [
+            'error',
+            {
+                property: 'toSorted',
+                message:
+                    'ES2023; the WebViews the panel runs in do not support it. Copy the array and sort it.',
+            },
+            {
+                property: 'toReversed',
+                message:
+                    'ES2023; the WebViews the panel runs in do not support it. Copy the array and reverse it.',
+            },
+            {
+                property: 'toSpliced',
+                message:
+                    'ES2023; the WebViews the panel runs in do not support it. Copy the array and splice it.',
+            },
+            {
+                object: 'Object',
+                property: 'hasOwn',
+                message: 'ES2022; use Object.prototype.hasOwnProperty.call.',
+            },
+        ],
+        // A bare global is an Identifier, not a MemberExpression, so
+        // no-restricted-properties cannot see it.
+        'no-restricted-globals': [
+            'error',
+            {
+                name: 'structuredClone',
+                message: 'Chrome 98+; not available in the WebViews we target.',
+            },
+        ],
     },
     overrides: [
         {
