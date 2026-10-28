@@ -79,6 +79,16 @@ var globalContext homeContext
 func Main(clientBuildFS fs.FS) {
 	ctx := context.Background()
 
+	// TODO(s.chzhen):  Construct logger from command-line options.
+	l := slog.Default()
+
+	// workDir is assigned below, see the docs for [recoverAndLog] for the reason
+	// it is passed around by pointer.
+	var workDir string
+
+	// Recover the panics of this goroutine, see the docs for [recoverAndLog].
+	defer recoverAndLog(ctx, l, &workDir)
+
 	initCmdLineOpts()
 
 	// The configuration file path can be overridden, but other command-line
@@ -89,14 +99,15 @@ func Main(clientBuildFS fs.FS) {
 	// package flag.
 	opts := loadCmdLineOpts()
 
-	// TODO(s.chzhen):  Construct logger from command-line options.
-	l := slog.Default()
 	workDir, err := initWorkingDir(opts)
 	if err != nil {
 		l.ErrorContext(ctx, "failed to init working directory", slogutil.KeyError, err)
 
 		os.Exit(osutil.ExitCodeFailure)
 	}
+
+	// Set up the crash log as early as possible, but never fail because of it.
+	installCrashHandler(ctx, l, workDir)
 
 	confPath := initConfigFilename(ctx, l, opts, workDir)
 

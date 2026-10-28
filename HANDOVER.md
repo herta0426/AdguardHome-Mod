@@ -607,6 +607,9 @@ gh api -H "Accept: application/vnd.github.raw" \
 - 删接口会打断仓库外的调用方，见 2.5 节。
 - 上游同步会把删掉的平台文件与功能带回来，见第 10 节。
 - 本机跑着官方 AdGuard Home 服务（占用 3000/53），做本地验证要换端口，别去动它。
+- **崩溃了先找 `<workdir>/崩溃日志.log`**（模块里是 `/data/adb/agh/崩溃日志.log`）。`internal/home/crash_linux.go` 在 `Main` 一开始、配置 logger 之前就把进程的 fd 2（stderr）重定向到这个文件，所以**任意 goroutine 的 panic 栈**都会落盘；每次启动还会写一行「时间 + 版本 + pid」的头，用来判断这次崩溃属于哪个进程。文件涨到 50 MiB 后，下次启动时会被改名成 `崩溃日志.log.1`（旧的 `.1` 被覆盖），所以最多占 100 MiB。只有 Linux 上会重定向，非 Linux 平台只有同名 stub。
+- 为什么需要这个文件：AGH 默认只把日志写 stdout——`log.file` 为空时 `configureLogger`（`internal/home/log.go`）直接 return——而模块脚本启动时没有把 stdout/stderr 重定向到任何地方，于是 runtime 打到 stderr 的 panic 栈、以及 slog 的输出，**在没有这个重定向时基本等于丢失**。排错时别只看 `logcat` 或模块自己的日志。
+- 这个重定向只管「stderr 去哪」。除了 `Main` 里 `defer recoverAndLog(...)` 兜住的主 goroutine，其它 goroutine 的 panic 仍然由 runtime 直接写 stderr 并终止整个进程（不做恢复），但栈照样进 `崩溃日志.log`。
 
 ## 15. 每次改动的验收清单
 

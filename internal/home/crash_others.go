@@ -1,0 +1,76 @@
+//go:build !linux
+
+package home
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"runtime/debug"
+	"time"
+
+	"github.com/AdguardTeam/AdGuardHome/internal/version"
+	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/AdguardTeam/golibs/osutil"
+)
+
+// redirectStderrToCrashLog is a stub for the platforms where redirecting fd 2
+// into a file is not implemented.  The panic traces go into the stderr of the
+// process as usual.
+func redirectStderrToCrashLog(_ context.Context, _ *slog.Logger, _ string) (err error) {
+	return nil
+}
+
+// installCrashHandler is a stub, see [redirectStderrToCrashLog].  l must not be
+// nil.
+func installCrashHandler(ctx context.Context, l *slog.Logger, workDir string) {
+	err := redirectStderrToCrashLog(ctx, l, workDir)
+	if err != nil {
+		l.WarnContext(ctx, "failed to set up the crash log", slogutil.KeyError, err)
+	}
+}
+
+// recoverAndLog is intended to be deferred at the very beginning of the
+// function whose goroutine it protects:
+//
+//	defer recoverAndLog(ctx, l, &workDir)
+//
+// It must be the deferred call itself and not a function that wraps it, since
+// [recover] returns nil unless it is called directly by the deferred function.
+// workDir is passed by pointer, because the arguments of a deferred call are
+// evaluated immediately, while the working directory is only known later.  It
+// may be nil.  l must not be nil.
+func recoverAndLog(ctx context.Context, l *slog.Logger, workDir *string) {
+	v := recover()
+	if v == nil {
+		return
+	}
+
+	dir := ""
+	if workDir != nil {
+		dir = *workDir
+	}
+
+	stack := debug.Stack()
+	_, _ = fmt.Fprintf(
+		os.Stderr,
+		"%s: adguard home panicked: %v; version %s; pid %d; workdir %q\n%s\n",
+		time.Now().Format(time.RFC3339Nano),
+		v,
+		version.Full(),
+		os.Getpid(),
+		dir,
+		stack,
+	)
+
+	l.ErrorContext(
+		ctx,
+		"panic recovered",
+		"panic", v,
+		"workdir", dir,
+		"stack", string(stack),
+	)
+
+	os.Exit(osutil.ExitCodeFailure)
+}
