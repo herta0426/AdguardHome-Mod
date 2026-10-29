@@ -5,15 +5,25 @@ package home
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"runtime/debug"
-	"time"
 
-	"github.com/AdguardTeam/AdGuardHome/internal/version"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/osutil"
 )
+
+// crashLogWriter returns nil, since there is no crash log on this platform.
+func crashLogWriter() (w io.Writer) {
+	return nil
+}
+
+// crashLogUID returns the value reported on the platforms where the crash log
+// is not implemented.
+func crashLogUID() (uid int) {
+	return -1
+}
 
 // redirectStderrToCrashLog is a stub for the platforms where redirecting fd 2
 // into a file is not implemented.  The panic traces go into the stderr of the
@@ -53,16 +63,14 @@ func recoverAndLog(ctx context.Context, l *slog.Logger, workDir *string) {
 	}
 
 	stack := debug.Stack()
-	_, _ = fmt.Fprintf(
-		os.Stderr,
-		"%s: adguard home panicked: %v; version %s; pid %d; workdir %q\n%s\n",
-		time.Now().Format(time.RFC3339Nano),
-		v,
-		version.Full(),
-		os.Getpid(),
-		dir,
-		stack,
-	)
+
+	w := io.Writer(os.Stderr)
+	_ = writeCrashLogRecord(w, dir, crashLogEventPanic, "panic", fmt.Sprint(v))
+
+	writeBreadcrumbs(w)
+
+	_, _ = io.WriteString(w, "=== stack ===\n")
+	_, _ = w.Write(stack)
 
 	l.ErrorContext(
 		ctx,

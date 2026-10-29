@@ -94,8 +94,8 @@ func TestOpenCrashLogFile(t *testing.T) {
 	f, err := openCrashLogFile(ctx, l, path)
 	require.NoError(t, err)
 
-	require.NoError(t, writeCrashLogHeader(f))
-	require.NoError(t, writeCrashLogHeader(f))
+	require.NoError(t, writeCrashLogHeader(f, dir))
+	require.NoError(t, writeCrashLogHeader(f, dir))
 	require.NoError(t, f.Close())
 
 	data, err := os.ReadFile(path)
@@ -109,7 +109,7 @@ func TestOpenCrashLogFile(t *testing.T) {
 	f, err = openCrashLogFile(ctx, l, path)
 	require.NoError(t, err)
 
-	require.NoError(t, writeCrashLogHeader(f))
+	require.NoError(t, writeCrashLogHeader(f, dir))
 	require.NoError(t, f.Close())
 
 	data, err = os.ReadFile(path)

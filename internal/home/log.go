@@ -69,11 +69,34 @@ func newSlogLogger(ls *logSettings) (l *slog.Logger) {
 		log.SetLevel(log.DEBUG)
 	}
 
-	return slogutil.New(&slogutil.Config{
+	base := slogutil.New(&slogutil.Config{
 		Format:       slogutil.FormatAdGuardLegacy,
 		Level:        lvl,
 		AddTimestamp: true,
 	})
+
+	// Keep the most recent log records in memory, so that a recovered panic can
+	// write them into the crash log, see [writeBreadcrumbs].
+	breadcrumbs = newBreadcrumbRing()
+
+	handlers := []slog.Handler{
+		base.Handler(),
+		newRingHandler(breadcrumbs, &slog.HandlerOptions{
+			Level: lvl,
+		}),
+	}
+
+	// Mirror the warnings and the errors into the crash log as well, so that a
+	// crash report shows what the process complained about before it died.  The
+	// crash log only exists on some platforms, see [crashLogWriter].
+	f := crashLogWriter()
+	if f != nil {
+		handlers = append(handlers, slog.NewTextHandler(f, &slog.HandlerOptions{
+			Level: slog.LevelWarn,
+		}))
+	}
+
+	return slog.New(newFanoutHandler(handlers...))
 }
 
 // configureLogger configures logger output.  ls must not be nil.

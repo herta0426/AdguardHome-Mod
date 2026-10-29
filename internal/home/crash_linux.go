@@ -10,9 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"time"
 
-	"github.com/AdguardTeam/AdGuardHome/internal/version"
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/osutil"
@@ -26,8 +24,12 @@ import (
 const crashLogName = "崩溃日志.log"
 
 // crashLogMaxSize is the size in bytes that the crash log must reach to be
-// rotated into the backup file on the next start.
-const crashLogMaxSize = 50 * 1024 * 1024
+// rotated into the backup file on the next start.  The stack of a panic is only
+// a few tens of kilobytes, so 8 MiB leaves plenty of room for the breadcrumbs
+// and the mirrored warnings, while the file and its backup take at most 16 MiB
+// together.  That matters on Android, where the crash log lives in /data, the
+// space of which is scarce.
+const crashLogMaxSize = 8 * 1024 * 1024
 
 // crashLogBackupSuffix is appended to the crash log path on rotation.
 const crashLogBackupSuffix = ".1"
@@ -45,6 +47,24 @@ var crashLogFile *os.File
 // crashLogPath returns the path to the crash log in workDir.
 func crashLogPath(workDir string) (path string) {
 	return filepath.Join(workDir, crashLogName)
+}
+
+// crashLogWriter returns the crash log file the logger mirrors the warnings
+// into, or nil if the crash log has not been set up.  It is used by
+// [newSlogLogger], which must not refer to [crashLogFile] directly, since that
+// variable only exists on Linux.
+func crashLogWriter() (w io.Writer) {
+	if crashLogFile == nil {
+		return nil
+	}
+
+	return crashLogFile
+}
+
+// crashLogUID returns the user ID of the process, which tells whether AdGuard
+// Home runs as root.
+func crashLogUID() (uid int) {
+	return os.Getuid()
 }
 
 // rotateCrashLog renames path into path+[crashLogBackupSuffix] if the file
@@ -90,24 +110,6 @@ func openCrashLogFile(ctx context.Context, l *slog.Logger, path string) (f *os.F
 	return f, nil
 }
 
-// writeCrashLogHeader writes the one line that identifies the run the following
-// records belong to, so that the traces of several processes can be told apart
-// in the same file.
-func writeCrashLogHeader(w io.Writer) (err error) {
-	_, err = fmt.Fprintf(
-		w,
-		"%s: adguard home started, version %s, pid %d\n",
-		time.Now().Format(time.RFC3339Nano),
-		version.Full(),
-		os.Getpid(),
-	)
-	if err != nil {
-		return fmt.Errorf("writing crash log header: %w", err)
-	}
-
-	return nil
-}
-
 // redirectStderrToCrashLog creates or opens <workDir>/崩溃日志.log, writes the
 // startup header into it and points fd 2, that is the stderr of the whole
 // process, at it.  From that moment on the Go runtime writes the panic traces
@@ -136,7 +138,7 @@ func redirectStderrToCrashLog(
 	// unreachable, see the docs for [crashLogFile].
 	crashLogFile = f
 
-	err = writeCrashLogHeader(f)
+	err = writeCrashLogHeader(f, workDir)
 	if err != nil {
 		l.WarnContext(ctx, "failed to write crash log header", slogutil.KeyError, err)
 	}
@@ -181,15 +183,6 @@ func recoverAndLog(ctx context.Context, l *slog.Logger, workDir *string) {
 	}
 
 	stack := debug.Stack()
-	msg := fmt.Sprintf(
-		"%s: adguard home panicked: %v; version %s; pid %d; workdir %q\n%s\n",
-		time.Now().Format(time.RFC3339Nano),
-		v,
-		version.Full(),
-		os.Getpid(),
-		dir,
-		stack,
-	)
 
 	// If the crash log is unavailable, for example because workDir is not
 	// writable, write to stderr directly, so that the trace is not lost
@@ -199,7 +192,15 @@ func recoverAndLog(ctx context.Context, l *slog.Logger, workDir *string) {
 		w = crashLogFile
 	}
 
-	_, _ = io.WriteString(w, msg)
+	_ = writeCrashLogRecord(w, dir, crashLogEventPanic, "panic", fmt.Sprint(v))
+
+	// NOTE: The breadcrumbs are written before the stack, since they explain
+	// what led to the panic.  Only the panics recovered here have them, see the
+	// docs for [breadcrumbs].
+	writeBreadcrumbs(w)
+
+	_, _ = io.WriteString(w, "=== stack ===\n")
+	_, _ = w.Write(stack)
 
 	l.ErrorContext(
 		ctx,
