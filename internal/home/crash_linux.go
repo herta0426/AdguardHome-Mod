@@ -132,6 +132,10 @@ func redirectStderrToCrashLog(
 		l.WarnContext(ctx, "failed to write crash log header", slogutil.KeyError, err)
 	}
 
+	// NOTE: This message goes into the crash log itself as well, since the
+	// logger mirrors the warnings into it.
+	logLocalTimeZoneStatus(ctx, l)
+
 	// NOTE: This message goes into the crash log itself, since fd 2 has already
 	// been redirected by now.
 	l.InfoContext(ctx, "redirected stderr to the crash log", "path", path)
