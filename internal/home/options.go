@@ -28,8 +28,14 @@ type options struct {
 	workDir string
 
 	// logFile is the path to the log file.  If empty, AdGuard Home writes to
-	// stdout; if "syslog", to syslog.
+	// stdout; if "syslog", to syslog; if "discard" or "none", the standard
+	// library log output is discarded.
 	logFile string
+
+	// crashLogPath is the path to the crash log file.  If empty, the value of
+	// the AGH_CRASH_LOG environment variable is used; if that is empty too, the
+	// crash log is written into the working directory.
+	crashLogPath string
 
 	// pidFile is the file name for the file to which the PID is saved.
 	pidFile string
@@ -225,9 +231,23 @@ var cmdLineOpts = []cmdLineOpt{{
 	effect:          nil,
 	serialize:       func(o options) (val string, ok bool) { return o.logFile, o.logFile != "" },
 	description: `Path to log file.  If empty, write to stdout; ` +
-		`if "syslog", write to system log.`,
+		`if "syslog", write to system log; if "discard" or "none", write nowhere.`,
 	longName:  "logfile",
 	shortName: "l",
+}, {
+	updateWithValue: func(o options, v string) (options, error) {
+		o.crashLogPath = v
+		return o, nil
+	},
+	updateNoValue: nil,
+	effect:        nil,
+	serialize: func(o options) (val string, ok bool) {
+		return o.crashLogPath, o.crashLogPath != ""
+	},
+	description: `Path to the crash log file.  If empty, AGH_CRASH_LOG is used; ` +
+		`if that is empty too, <work-dir>/crash.log is used.`,
+	longName:  "crash-log",
+	shortName: "",
 }, {
 	updateWithValue: func(o options, v string) (options, error) { o.pidFile = v; return o, nil },
 	updateNoValue:   nil,

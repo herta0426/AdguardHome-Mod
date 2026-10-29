@@ -107,7 +107,8 @@ func Main(clientBuildFS fs.FS) {
 	}
 
 	// Set up the crash log as early as possible, but never fail because of it.
-	installCrashHandler(ctx, l, workDir)
+	crashPath := resolveCrashLogPath(opts.crashLogPath, os.Getenv(envCrashLog), workDir)
+	installCrashHandler(ctx, l, crashPath, workDir)
 
 	confPath := initConfigFilename(ctx, l, opts, workDir)
 

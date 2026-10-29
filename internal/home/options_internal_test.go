@@ -113,6 +113,12 @@ func TestParseLogfile(t *testing.T) {
 	assert.Equal(t, "path", testParseOK(t, "--logfile", "path").logFile, "--logfile is log file")
 }
 
+func TestParseCrashLogPath(t *testing.T) {
+	assert.Equal(t, "", testParseOK(t).crashLogPath, "empty is no crash log path")
+	assert.Equal(t, "path", testParseOK(t, "--crash-log", "path").crashLogPath, "--crash-log is crash log path")
+	testParseParamMissing(t, "--crash-log")
+}
+
 func TestParsePidfile(t *testing.T) {
 	assert.Equal(t, "", testParseOK(t).pidFile, "empty is no pid file")
 	assert.Equal(t, "path", testParseOK(t, "--pidfile", "path").pidFile, "--pidfile is pid file")
@@ -195,6 +201,10 @@ func TestOptsToArgs(t *testing.T) {
 		name: "log_file",
 		args: []string{"-l", "path"},
 		opts: options{logFile: "path"},
+	}, {
+		name: "crash_log",
+		args: []string{"--crash-log", "path"},
+		opts: options{crashLogPath: "path"},
 	}, {
 		name: "pid_file",
 		args: []string{"--pidfile", "path"},

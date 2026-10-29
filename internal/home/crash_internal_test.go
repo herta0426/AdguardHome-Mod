@@ -85,7 +85,7 @@ func TestOpenCrashLogFile(t *testing.T) {
 	l := slogutil.NewDiscardLogger()
 
 	dir := t.TempDir()
-	path := crashLogPath(dir)
+	path := resolveCrashLogPath("", "", dir)
 	require.Equal(t, filepath.Join(dir, crashLogName), path)
 
 	// NOTE: The file is opened, the header is written and the file is closed,

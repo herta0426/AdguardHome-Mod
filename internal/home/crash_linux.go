@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 
 	"github.com/AdguardTeam/golibs/errors"
@@ -16,12 +15,6 @@ import (
 	"github.com/AdguardTeam/golibs/osutil"
 	"golang.org/x/sys/unix"
 )
-
-// crashLogName is the name of the file that receives everything the process
-// writes to stderr, in particular the panic traces printed by the Go runtime.
-// It is part of the user-visible interface of the mod, so do not translate or
-// rename it.
-const crashLogName = "崩溃日志.log"
 
 // crashLogMaxSize is the size in bytes that the crash log must reach to be
 // rotated into the backup file on the next start.  The stack of a panic is only
@@ -43,11 +36,6 @@ const stderrFD = 2
 // unreachable is closed by a finalizer, and a close racing with the writes the
 // runtime performs while panicking is exactly what a crash log must not do.
 var crashLogFile *os.File
-
-// crashLogPath returns the path to the crash log in workDir.
-func crashLogPath(workDir string) (path string) {
-	return filepath.Join(workDir, crashLogName)
-}
 
 // crashLogWriter returns the crash log file the logger mirrors the warnings
 // into, or nil if the crash log has not been set up.  It is used by
@@ -110,17 +98,18 @@ func openCrashLogFile(ctx context.Context, l *slog.Logger, path string) (f *os.F
 	return f, nil
 }
 
-// redirectStderrToCrashLog creates or opens <workDir>/崩溃日志.log, writes the
+// redirectStderrToCrashLog creates or opens the crash log at path, writes the
 // startup header into it and points fd 2, that is the stderr of the whole
 // process, at it.  From that moment on the Go runtime writes the panic traces
-// of every goroutine into the file, no matter how the process was started.  l
-// must not be nil.
+// of every goroutine into the file, no matter how the process was started.
+// workDir is only used for the header.  l must not be nil.
 func redirectStderrToCrashLog(
 	ctx context.Context,
 	l *slog.Logger,
+	path string,
 	workDir string,
 ) (err error) {
-	path := crashLogPath(workDir)
+	l.InfoContext(ctx, "using crash log", "path", path)
 
 	f, err := openCrashLogFile(ctx, l, path)
 	if err != nil {
@@ -150,12 +139,12 @@ func redirectStderrToCrashLog(
 	return nil
 }
 
-// installCrashHandler redirects the stderr of the process into the crash log in
-// workDir, see [redirectStderrToCrashLog].  Errors are only logged, since the
-// crash log itself must never keep AdGuard Home from starting.  l must not be
-// nil.
-func installCrashHandler(ctx context.Context, l *slog.Logger, workDir string) {
-	err := redirectStderrToCrashLog(ctx, l, workDir)
+// installCrashHandler redirects the stderr of the process into the crash log at
+// path, see [redirectStderrToCrashLog].  workDir is only used for the header.
+// Errors are only logged, since the crash log itself must never keep AdGuard
+// Home from starting.  l must not be nil.
+func installCrashHandler(ctx context.Context, l *slog.Logger, path, workDir string) {
+	err := redirectStderrToCrashLog(ctx, l, path, workDir)
 	if err != nil {
 		l.WarnContext(ctx, "failed to set up the crash log", slogutil.KeyError, err)
 	}

@@ -28,14 +28,14 @@ func crashLogUID() (uid int) {
 // redirectStderrToCrashLog is a stub for the platforms where redirecting fd 2
 // into a file is not implemented.  The panic traces go into the stderr of the
 // process as usual.
-func redirectStderrToCrashLog(_ context.Context, _ *slog.Logger, _ string) (err error) {
+func redirectStderrToCrashLog(_ context.Context, _ *slog.Logger, _, _ string) (err error) {
 	return nil
 }
 
 // installCrashHandler is a stub, see [redirectStderrToCrashLog].  l must not be
 // nil.
-func installCrashHandler(ctx context.Context, l *slog.Logger, workDir string) {
-	err := redirectStderrToCrashLog(ctx, l, workDir)
+func installCrashHandler(ctx context.Context, l *slog.Logger, path, workDir string) {
+	err := redirectStderrToCrashLog(ctx, l, path, workDir)
 	if err != nil {
 		l.WarnContext(ctx, "failed to set up the crash log", slogutil.KeyError, err)
 	}

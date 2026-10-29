@@ -4,9 +4,11 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/AdguardTeam/AdGuardHome/internal/aghos"
 	"github.com/AdguardTeam/AdGuardHome/internal/configmgr"
@@ -20,10 +22,31 @@ import (
 // for logger output.
 const configSyslog = "syslog"
 
+// configDiscard is used to indicate that the standard library log output should
+// be discarded instead of being written to a file.  The comparison is
+// case-insensitive, see [isDiscardFileName].
+const configDiscard = "discard"
+
+// configNone is an alias of [configDiscard].
+const configNone = "none"
+
+// isDiscardFileName returns true if fileName is one of the values of the log
+// file setting that disable writing the standard library log output to a file.
+// The comparison is case-insensitive.
+func isDiscardFileName(fileName string) (ok bool) {
+	switch strings.ToLower(fileName) {
+	case configDiscard, configNone:
+		return true
+	default:
+		return false
+	}
+}
+
 // logSettings are the logging settings part of the configuration file.
 type logSettings struct {
 	// file is the path to the log file.  If empty, logs are written to stdout.
-	// If "syslog", logs are written to syslog.
+	// If "syslog", logs are written to syslog.  If "discard" or "none", the
+	// standard library logs are discarded.
 	file string
 
 	// maxAge is the maximum duration for retaining old log files, in days.
@@ -116,6 +139,16 @@ func configureLogger(ls *logSettings, workDir string) (err error) {
 		if err != nil {
 			return fmt.Errorf("cannot initialize syslog: %w", err)
 		}
+
+		return nil
+	}
+
+	if isDiscardFileName(ls.file) {
+		// Discard the standard library logs, so that the noisy third-party
+		// output, e.g. of the DNS proxy, does not end up anywhere.  The
+		// structured logs, the breadcrumbs and the crash log keep working, they
+		// do not use the standard library logger.
+		log.SetOutput(io.Discard)
 
 		return nil
 	}
