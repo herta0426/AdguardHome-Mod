@@ -92,17 +92,30 @@ describe('queryLogs store', () => {
         expect(lastCall.reason).toEqual(['NotFilteredNotFound']);
     });
 
-    it('setFilteredLogs sends both SNI reasons for the sni status', async () => {
+    it('setFilteredLogs sends only the blocked SNI reason for the sni_blocked status', async () => {
         (queryLog as any).mockReset();
         (queryLog as any).mockResolvedValue({
             data: [{ reason: 'FilteredSNI', question: {} }],
             oldest: '',
         });
 
-        await setFilteredLogs({ search: '', status: 'sni', reason: 'all' });
+        await setFilteredLogs({ search: '', status: 'sni_blocked', reason: 'all' });
 
         const lastCall = (queryLog as any).mock.calls.at(-1)[0];
-        expect([...lastCall.reason].sort()).toEqual(['FilteredSNI', 'NotFilteredSNI']);
+        expect(lastCall.reason).toEqual(['FilteredSNI']);
+    });
+
+    it('setFilteredLogs sends only the processed SNI reason for the sni_processed status', async () => {
+        (queryLog as any).mockReset();
+        (queryLog as any).mockResolvedValue({
+            data: [{ reason: 'NotFilteredSNI', question: {} }],
+            oldest: '',
+        });
+
+        await setFilteredLogs({ search: '', status: 'sni_processed', reason: 'all' });
+
+        const lastCall = (queryLog as any).mock.calls.at(-1)[0];
+        expect(lastCall.reason).toEqual(['NotFilteredSNI']);
     });
 
     it('does not mark the log as complete when additional loading stops', async () => {

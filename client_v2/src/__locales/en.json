@@ -574,6 +574,8 @@
   "query_log_rewritten": "Rewritten",
   "query_log_safe_search": "Safe search",
   "query_log_sni": "SNI",
+  "query_log_sni_blocked": "SNI blocked",
+  "query_log_sni_processed": "SNI processed",
   "reason_table_header": "Reason",
   "refresh_btn": "Refresh",
   "refresh_statics": "Refresh statistics",

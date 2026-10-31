@@ -573,6 +573,8 @@
   "query_log_retention": "紀錄輪替",
   "query_log_rewritten": "已改寫的",
   "query_log_safe_search": "安全搜尋",
+  "query_log_sni_blocked": "SNI 已攔截",
+  "query_log_sni_processed": "SNI 已處理",
   "reason_table_header": "原因",
   "refresh_btn": "重新整理",
   "refresh_statics": "重新整理統計資料",

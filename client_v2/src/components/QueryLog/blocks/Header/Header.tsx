@@ -50,9 +50,15 @@ const STATUS_OPTIONS = [
         },
     },
     {
-        value: 'sni',
+        value: 'sni_blocked',
         get label() {
-            return intl.getMessage('query_log_sni');
+            return intl.getMessage('query_log_sni_blocked');
+        },
+    },
+    {
+        value: 'sni_processed',
+        get label() {
+            return intl.getMessage('query_log_sni_processed');
         },
     },
     {

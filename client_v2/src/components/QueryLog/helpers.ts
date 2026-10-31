@@ -29,7 +29,8 @@ export type QueryStatusKey =
     | 'allowed'
     | 'processed'
     | 'blocked'
-    | 'sni'
+    | 'sni_blocked'
+    | 'sni_processed'
     | 'rewritten'
     | 'error';
 
@@ -55,8 +56,10 @@ export const getQueryStatusLabel = (statusKey: Exclude<QueryStatusKey, 'all'>): 
             return intl.getMessage('query_log_processed');
         case 'blocked':
             return intl.getMessage('query_log_blocked');
-        case 'sni':
-            return intl.getMessage('query_log_sni');
+        case 'sni_blocked':
+            return intl.getMessage('query_log_sni_blocked');
+        case 'sni_processed':
+            return intl.getMessage('query_log_sni_processed');
         case 'rewritten':
             return intl.getMessage('query_log_rewritten');
         case 'error':
@@ -214,8 +217,9 @@ export const getQueryStatusKey = (
         case FILTERED_STATUS.NOT_FILTERED_NOT_FOUND:
             return 'processed';
         case FILTERED_STATUS.FILTERED_SNI:
+            return 'sni_blocked';
         case FILTERED_STATUS.NOT_FILTERED_SNI:
-            return 'sni';
+            return 'sni_processed';
         case FILTERED_STATUS.NOT_FILTERED_ERROR:
         case FILTERED_STATUS.FILTERED_INVALID:
             return 'error';
