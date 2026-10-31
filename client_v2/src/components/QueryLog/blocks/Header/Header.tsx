@@ -19,10 +19,8 @@ type Props = {
     onSearch: (value: string) => void;
     onRefresh: () => void;
     onStatusFilterChange: (status: string) => void;
-    onReasonFilterChange: (reason: string) => void;
     currentSearch: string;
     currentStatus: string;
-    currentReason: string;
     isLoading: boolean;
 };
 
@@ -61,39 +59,6 @@ const STATUS_OPTIONS = [
         value: 'rewritten',
         get label() {
             return intl.getMessage('query_log_rewritten');
-        },
-    },
-];
-
-const REASON_OPTIONS = [
-    {
-        value: 'all',
-        get label() {
-            return intl.getMessage('query_log_all_reasons');
-        },
-    },
-    {
-        value: 'FilteredBlackList',
-        get label() {
-            return intl.getMessage('query_log_blocked_by_filter');
-        },
-    },
-    {
-        value: 'FilteredSafeBrowsing',
-        get label() {
-            return intl.getMessage('query_log_blocked_threats');
-        },
-    },
-    {
-        value: 'FilteredParental',
-        get label() {
-            return intl.getMessage('query_log_blocked_by_parental_control');
-        },
-    },
-    {
-        value: 'Rewrite',
-        get label() {
-            return intl.getMessage('dns_rewrites');
         },
     },
 ];
@@ -140,9 +105,6 @@ export const Header = (props: Props) => {
 
     const selectedStatus = createMemo(
         () => STATUS_OPTIONS.find((opt) => opt.value === props.currentStatus) || STATUS_OPTIONS[0],
-    );
-    const selectedReason = createMemo(
-        () => REASON_OPTIONS.find((opt) => opt.value === props.currentReason) || REASON_OPTIONS[0],
     );
 
     return (
@@ -211,22 +173,6 @@ export const Header = (props: Props) => {
                             optionTestIdPrefix="query-log-status-option"
                             onChange={(option: IOption<string>) =>
                                 props.onStatusFilterChange(option.value)
-                            }
-                            menuSize="big"
-                            menuPosition="right"
-                            borderless={!isMobile()}
-                            class={s.filterSelect}
-                        />
-                    </div>
-
-                    <div class={s.filterField} data-testid="query-log-reason-filter">
-                        <Select
-                            size="responsive"
-                            options={REASON_OPTIONS}
-                            value={selectedReason()}
-                            optionTestIdPrefix="query-log-reason-option"
-                            onChange={(option: IOption<string>) =>
-                                props.onReasonFilterChange(option.value)
                             }
                             menuSize="big"
                             menuPosition="right"

@@ -680,24 +680,11 @@ test.describe('Query log desktop', () => {
 
         await selectFilterOption(
             page,
-            'query-log-reason-filter',
-            'FilteredSafeSearch',
-            'query-log-reason-option',
-        );
-        const safeSearchRequest = await expectQueryLogRequestCount(queryLogRequests, 4);
-
-        expect(safeSearchRequest?.searchParams.getAll('reason')).toEqual(['FilteredSafeSearch']);
-        await expect(page.getByTestId('query-log-request-cell')).toHaveCount(1);
-        await expect(getRequestCellByDomain(page, 'search.example')).toHaveCount(1);
-        expectPageFilters(page, { search: null, status: 'all', reason: 'FilteredSafeSearch' });
-
-        await selectFilterOption(
-            page,
             'query-log-status-filter',
             'blocked',
             'query-log-status-option',
         );
-        const emptyStateRequest = await expectQueryLogRequestCount(queryLogRequests, 5);
+        const emptyStateRequest = await expectQueryLogRequestCount(queryLogRequests, 4);
 
         expect(emptyStateRequest?.searchParams.getAll('reason')).toEqual([
             'FilteredBlackList',

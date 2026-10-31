@@ -140,11 +140,6 @@ export const QueryLog = () => {
         });
     };
 
-    const handleReasonFilterChange = (reason: string) => {
-        setIsIncrementalLoad(false);
-        navigate(getLogsUrlParams(currentSearch(), currentStatus(), reason), { replace: true });
-    };
-
     const handleRefresh = () => {
         setIsIncrementalLoad(false);
         refreshFilteredLogs();
@@ -199,10 +194,8 @@ export const QueryLog = () => {
                     onSearch={handleSearch}
                     onRefresh={handleRefresh}
                     onStatusFilterChange={handleStatusFilterChange}
-                    onReasonFilterChange={handleReasonFilterChange}
                     currentSearch={currentSearch()}
                     currentStatus={currentStatus()}
-                    currentReason={currentReason()}
                     isLoading={!!isRequestInFlight()}
                 />
 
