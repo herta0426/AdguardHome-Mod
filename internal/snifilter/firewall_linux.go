@@ -104,7 +104,7 @@ func (f *Filter) startFirewall(ctx context.Context) (err error) {
 	f.wg.Add(1)
 	go f.watchCounters(ctx)
 
-	// The ports, the UIDs, and the drop_quic setting are only used to build
+	// The ports and the drop_quic setting are only used to build
 	// the rules, so they don't affect AdGuard Home anymore.
 	f.logger.InfoContext(
 		ctx,

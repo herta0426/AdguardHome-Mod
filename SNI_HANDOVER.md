@@ -257,7 +257,8 @@ SNI 条目先进入 querylog 内存 buffer，达到 `querylog.size_memory` 后�
 | IPv6 扩展头 | 已支持 hop-by-hop/routing/dest-opts/AH/首片，ESP、no-next-header、非首片放弃 | 之前带扩展头的包会被整包放行且无 SNI 记录，2026-10-18 起由 `upperLayer` 统一处理；闸门与解析共用同一个 walk |
 | 规则排除 SYN | flow 的起始序号只能乐观同步 | 若某连接第一个进入队列的段不是 ClientHello 开头，该连接不被跟踪（可被恶意 App 利用）。建议模块脚本**不要再排除 SYN**，让 `nextSeq` 从 SYN 的 seq+1 精确初始化 |
 | 按客户端规则 | 只看全局过滤规则，不看客户端 IP | SNI 层只能使用全局规则；客户端区分应在 DNS/代理层做 |
-| `uids`、`drop_quic` 配置 | AGH 不负责安装这些规则 | 实际行为由 Magisk 模块脚本决定；不要以为改 YAML 就自动改 iptables。启动时会 warn 提示这两个键不生效 |
+| `drop_quic` 配置 | AGH 不负责安装这些规则 | 实际行为由 Magisk 模块脚本决定；不要以为改 YAML 就自动改 iptables。启动时会 warn 提示它不生效 |
+| 进程（UID）过滤 | 已从 AGH 移除，改由内核态判定 | 模块脚本用 `iptables -m owner` 的 `--uid-owner 0 -j RETURN` 放行 AGH 自己，其余 UID 交给 REDIRECT/NFQUEUE；旧配置里的 `uids` 键被静默忽略 |
 | RST 注入 | 依赖 raw socket 和 `rp_filter` | 严格 `rp_filter` 下可能变成连接挂起而不是快速失败 |
 | 队列满 | `--queue-bypass` 不能救队列满 | 队列满会丢包并增加 `queue_dropped`，需要看第 6 列 |
 | 队列实例缺失 | `--queue-bypass` 会静默放行 | 最常见、也最危险的“看起来没断网但 SNI 已死”状态 |

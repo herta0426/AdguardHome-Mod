@@ -61,7 +61,6 @@ func TestParams_Validate(t *testing.T) {
 		params: Params{
 			QueueNum: 7,
 			Ports:    []uint16{443},
-			UIDs:     []string{"1000", "10000-19999"},
 		},
 		wantErr: false,
 	}, {
@@ -74,27 +73,6 @@ func TestParams_Validate(t *testing.T) {
 		name: "zero_port",
 		params: Params{
 			Ports: []uint16{0},
-		},
-		wantErr: true,
-	}, {
-		name: "bad_uid",
-		params: Params{
-			Ports: []uint16{443},
-			UIDs:  []string{"root"},
-		},
-		wantErr: true,
-	}, {
-		name: "bad_uid_range",
-		params: Params{
-			Ports: []uint16{443},
-			UIDs:  []string{"100-1"},
-		},
-		wantErr: true,
-	}, {
-		name: "bad_uid_range_empty",
-		params: Params{
-			Ports: []uint16{443},
-			UIDs:  []string{"-100"},
 		},
 		wantErr: true,
 	}}

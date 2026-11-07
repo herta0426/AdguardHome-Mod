@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"net/netip"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -138,11 +137,6 @@ type Params struct {
 	// QueueNum is the number of the NFQUEUE queue used to receive the packets.
 	QueueNum uint16 `yaml:"queue_num"`
 
-	// UIDs is the list of the ranges of the IDs of the users the processes of
-	// which should be inspected, for example "10000-19999".  An empty slice
-	// means all processes.
-	UIDs []string `yaml:"uids"`
-
 	// DropQUIC defines whether to reject the UDP traffic to Ports in order to
 	// make the clients fall back to TCP.  The server names in QUIC are
 	// encrypted, so the SNI filter cannot inspect it.
@@ -161,52 +155,7 @@ func (p *Params) Validate() (err error) {
 		}
 	}
 
-	for _, uids := range p.UIDs {
-		if !validUIDRange(uids) {
-			return fmt.Errorf("uids: invalid range %q", uids)
-		}
-	}
-
 	return nil
-}
-
-// validUIDRange returns true if r is a valid user ID or a range of them, for
-// example "1000" or "10000-19999".
-func validUIDRange(r string) (ok bool) {
-	first, last, found := strings.Cut(r, "-")
-	if !found {
-		_, ok = parseUID(r)
-
-		return ok
-	}
-
-	firstID, firstOK := parseUID(first)
-	lastID, lastOK := parseUID(last)
-
-	return firstOK && lastOK && firstID <= lastID
-}
-
-// parseUID parses a user ID.
-func parseUID(s string) (id uint32, ok bool) {
-	if s == "" {
-		return 0, false
-	}
-
-	for _, c := range []byte(s) {
-		if c < '0' || c > '9' {
-			return 0, false
-		}
-	}
-
-	var v uint64
-	for _, c := range []byte(s) {
-		v = v*10 + uint64(c-'0')
-		if v > 1<<32-1 {
-			return 0, false
-		}
-	}
-
-	return uint32(v), true
 }
 
 // Config is the configuration of the SNI filter.
@@ -275,7 +224,6 @@ type Filter struct {
 	overflowCount uint64
 
 	ports    []uint16
-	uids     []string
 	queueNum uint16
 	dropQUIC bool
 
@@ -355,7 +303,6 @@ func New(c *Config) (f *Filter, err error) {
 		flows:    map[flowKey]*flow{},
 		queryLog: c.QueryLog,
 		ports:    slices.Clone(c.Ports),
-		uids:     slices.Clone(c.UIDs),
 		queueNum: c.QueueNum,
 		dropQUIC: c.DropQUIC,
 	}
@@ -423,7 +370,6 @@ func (f *Filter) Start(ctx context.Context) (err error) {
 		"sni filter started",
 		"ports", f.ports,
 		"queue_num", f.queueNum,
-		"uid_ranges", f.uids,
 		"drop_quic", f.dropQUIC,
 	)
 

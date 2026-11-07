@@ -120,7 +120,6 @@ gh release delete v2026-09-24 --repo herta0426/AdguardHome-Mod --cleanup-tag --y
 sni_filter:
   queue_num: 7          # 别用 0；脚本也从这里读队列号
   ports: [443, 8443]    # 用于快速短路：只有目的端口在列表里的包才进入解析
-  uids: []              # 描述性字段；例如 ["10000-19999"]，空表示所有进程；启动时 warn 提示不生效
   drop_quic: false      # 描述性字段；打开则由脚本 REJECT UDP 443，逼 HTTP/3 回退 TCP；启动时同样 warn
 ```
 
@@ -132,7 +131,7 @@ sni_filter:
 2. **无条件注册**：如上所述，strong 模式下不存在因为 `enabled` 而跳过注册的路径。
 3. **队列丢失自愈**：注册队列后用 `epoll` 监听 netlink socket 的 `EPOLLHUP`/`EPOLLERR`（epoll 不可用时退回 `poll`），内核断开队列时立刻关闭旧 socket 并重新注册，事件驱动、不轮询；关机会先写 eventfd 唤醒等待再退出。
 
-**规则由外部脚本维护**：AdGuardHome 只开 NFQUEUE、读包、发 RST，从不安装/清理/自愈 iptables 规则（早先为同时支持两种模式加过 `manage_rules` 开关，现已删除——内核没有 `xt_multiport` 时它自己装规则会失败，把规则完全交给脚本就没有这个问题）。Magisk 模块走的就是这条：`scripts/iptables.sh` 的 `rebuild_sni` 维护 `filter` 表里的 `AGH_SNI` 链（`-o lo -j RETURN` + 逐端口 `-p tcp --dport N -m owner --uid-owner … -m connbytes … -j NFQUEUE --queue-num N --queue-bypass`，v4/v6 各一份），5 秒守护循环里用 `-C` 检查、缺了就重建；端口来自模块自己的 `scripts/config.prop`（`sni_ports`），队列号从 `AdGuardHome.yaml` 的 `sni_filter.queue_num` 读，避免两边写死不同值。配置里的 `ports`/`uids`/`drop_quic` 现在只是描述性字段，AdGuardHome 不使用，保留是为了兼容旧配置。
+**规则由外部脚本维护**：AdGuardHome 只开 NFQUEUE、读包、发 RST，从不安装/清理/自愈 iptables 规则（早先为同时支持两种模式加过 `manage_rules` 开关，现已删除——内核没有 `xt_multiport` 时它自己装规则会失败，把规则完全交给脚本就没有这个问题）。Magisk 模块走的就是这条：`scripts/iptables.sh` 的 `rebuild_sni` 维护 `filter` 表里的 `AGH_SNI` 链（`-o lo -j RETURN` + 逐端口 `-p tcp --dport N -m owner --uid-owner … -m connbytes … -j NFQUEUE --queue-num N --queue-bypass`，v4/v6 各一份），5 秒守护循环里用 `-C` 检查、缺了就重建；端口来自模块自己的 `scripts/config.prop`（`sni_ports`），队列号从 `AdGuardHome.yaml` 的 `sni_filter.queue_num` 读，避免两边写死不同值。配置里的 `drop_quic` 现在只是描述性字段，AdGuardHome 不使用；“哪些进程被接管”已经交给内核态的 `iptables -m owner`（模块脚本通常对 root/AGH 自己放行），旧配置里的 `uids` 会被静默忽略。
 
 外部规则的硬要求：**必须带 `--queue-bypass`**，否则 AdGuardHome 没在跑时进队列的包没人判决，443 会整段卡住；链名建议沿用 `AGH_SNI`（AGH 侧的启动日志和文档都用这个名字）。
 
