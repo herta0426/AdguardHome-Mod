@@ -577,7 +577,6 @@ func (f *Filter) handlePacket(nf verdictSetter, a nfqueue.Attribute) (ret int) {
 				verdict = nfqueue.NfDrop
 			case verdictReset:
 				f.sendReset(&res.toClient)
-				f.sendReset(&res.toServer)
 
 				verdict = nfqueue.NfDrop
 			}

@@ -452,10 +452,6 @@ type inspection struct {
 	// meaningful when verdict is [verdictReset].
 	toClient rstSegment
 
-	// toServer is the reset segment that the server must receive.  It's only
-	// meaningful when verdict is [verdictReset].
-	toServer rstSegment
-
 	// verdict is the action to take for the packet.
 	verdict verdict
 }
@@ -547,7 +543,7 @@ func (f *Filter) inspect(p *packet) (res inspection) {
 
 		if blocked && !paused {
 			res.verdict = verdictReset
-			res.toClient, res.toServer = resetSegments(p)
+			res.toClient = resetSegment(p)
 		}
 	case err == nil:
 		f.decide(key, false)
@@ -1001,11 +997,14 @@ func (f *Filter) checkHost(host string) (res *filtering.Result) {
 	return &resVal
 }
 
-// resetSegments returns the reset segments that must be sent to the endpoints
-// of the blocked connection.
-func resetSegments(p *packet) (toClient, toServer rstSegment) {
-	// The endpoints accept the reset only if its sequence number is the one
-	// they expect to get from the other side.
+// resetSegment returns the reset segment that must be sent to the client of the
+// blocked connection.  The inspection only ever sees the device's own outbound
+// ClientHello, so the peer has never accepted this connection: a reset sent
+// towards it would be dropped as unsolicited, and closing the client side is
+// what actually makes the application fail fast.
+func resetSegment(p *packet) rstSegment {
+	// The client accepts the reset only if its sequence number is the one the
+	// client expects to get from the other side.
 	ack := p.seq + uint32(len(p.payload))
 	if p.flags&tcpFlagSYN != 0 {
 		ack++
@@ -1014,21 +1013,12 @@ func resetSegments(p *packet) (toClient, toServer rstSegment) {
 		ack++
 	}
 
-	toClient = rstSegment{
+	return rstSegment{
 		src: p.dst,
 		dst: p.src,
 		seq: p.ack,
 		ack: ack,
 	}
-
-	toServer = rstSegment{
-		src: p.src,
-		dst: p.dst,
-		seq: p.seq,
-		ack: p.ack,
-	}
-
-	return toClient, toServer
 }
 
 // flowKeyOf returns the connection that b, a raw IPv4 or IPv6 packet, belongs

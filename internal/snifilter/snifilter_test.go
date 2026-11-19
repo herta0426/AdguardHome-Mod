@@ -507,9 +507,9 @@ func TestFilter_logConnection(t *testing.T) {
 	})
 }
 
-// TestResetSegments tests the calculation of the reset segments of a blocked
+// TestResetSegment tests the calculation of the reset segment of a blocked
 // connection.
-func TestResetSegments(t *testing.T) {
+func TestResetSegment(t *testing.T) {
 	t.Parallel()
 
 	src := netip.MustParseAddrPort("10.0.0.1:12345")
@@ -524,15 +524,9 @@ func TestResetSegments(t *testing.T) {
 		payload: []byte("hello"),
 	}
 
-	toClient, toServer := resetSegments(p)
-
 	// The client gets the segment that looks like it comes from the server
 	// and expects the next byte the client is going to send.
-	assert.Equal(t, rstSegment{src: dst, dst: src, seq: 2000, ack: 1005}, toClient)
-
-	// The server gets the segment that looks like it comes from the client
-	// and expects the next byte the server is going to send.
-	assert.Equal(t, rstSegment{src: src, dst: dst, seq: 1000, ack: 2000}, toServer)
+	assert.Equal(t, rstSegment{src: dst, dst: src, seq: 2000, ack: 1005}, resetSegment(p))
 }
 
 // tcpPacket4 returns a raw IPv4 packet with a TCP segment.
