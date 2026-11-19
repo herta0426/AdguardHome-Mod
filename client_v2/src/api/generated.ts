@@ -1,11 +1,8 @@
 import type {
-    AccessList,
     AddUrlRequest,
     AddressesInfo,
     CheckConfigRequest,
     CheckConfigResponse,
-    Client,
-    ClientDelete,
     ClientUpdate,
     Clients,
     ClientsFindParams,
@@ -734,40 +731,6 @@ export const clientsStatus = async (options?: RequestInit): Promise<Clients> => 
     });
 };
 
-export const getClientsAddUrl = () => {
-    return `control/clients/add`;
-};
-
-/**
- * @summary Add a new client
- */
-export const clientsAdd = async (client: Client, options?: RequestInit): Promise<void> => {
-    return customFetch<void>(getClientsAddUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(client),
-    });
-};
-
-export const getClientsDeleteUrl = () => {
-    return `control/clients/delete`;
-};
-
-/**
- * @summary Remove a client
- */
-export const clientsDelete = async (
-    clientDelete: ClientDelete,
-    options?: RequestInit,
-): Promise<void> => {
-    return customFetch<void>(getClientsDeleteUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(clientDelete),
-    });
-};
 
 export const getClientsUpdateUrl = () => {
     return `control/clients/update`;
@@ -840,35 +803,6 @@ export const clientsSearch = async (
     });
 };
 
-export const getAccessListUrl = () => {
-    return `control/access/list`;
-};
-
-/**
- * @summary List (dis)allowed clients, blocked hosts, etc.
- */
-export const accessList = async (options?: RequestInit): Promise<AccessList> => {
-    return customFetch<AccessList>(getAccessListUrl(), {
-        ...options,
-        method: 'GET',
-    });
-};
-
-export const getAccessSetUrl = () => {
-    return `control/access/set`;
-};
-
-/**
- * @summary Set (dis)allowed clients, blocked hosts, etc.
- */
-export const accessSet = async (accessList: AccessList, options?: RequestInit): Promise<void> => {
-    return customFetch<void>(getAccessSetUrl(), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(accessList),
-    });
-};
 
 export const getRewriteListUrl = () => {
     return `control/rewrite/list`;

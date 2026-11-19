@@ -714,36 +714,6 @@
             'application/json':
               'schema':
                 '$ref': '#/components/schemas/Clients'
-  '/clients/add':
-    'post':
-      'tags':
-      - 'clients'
-      'operationId': 'clientsAdd'
-      'summary': 'Add a new client'
-      'requestBody':
-        'content':
-          'application/json':
-            'schema':
-              '$ref': '#/components/schemas/Client'
-        'required': true
-      'responses':
-        '200':
-          'description': 'OK.'
-  '/clients/delete':
-    'post':
-      'tags':
-      - 'clients'
-      'operationId': 'clientsDelete'
-      'summary': 'Remove a client'
-      'requestBody':
-        'content':
-          'application/json':
-            'schema':
-              '$ref': '#/components/schemas/ClientDelete'
-        'required': true
-      'responses':
-        '200':
-          'description': 'OK.'
   '/clients/update':
     'post':
       'tags':
@@ -808,39 +778,6 @@
             'application/json':
               'schema':
                 '$ref': '#/components/schemas/ClientsFindResponse'
-  '/access/list':
-    'get':
-      'operationId': 'accessList'
-      'responses':
-        '200':
-          'description': 'OK.'
-          'content':
-            'application/json':
-              'schema':
-                '$ref': '#/components/schemas/AccessListResponse'
-      'summary': 'List (dis)allowed clients, blocked hosts, etc.'
-      'tags':
-      - 'clients'
-  '/access/set':
-    'post':
-      'operationId': 'accessSet'
-      'requestBody':
-        'content':
-          'application/json':
-            'schema':
-              '$ref': '#/components/schemas/AccessSetRequest'
-        'required': true
-      'responses':
-        '200':
-          'description': 'OK.'
-        '400':
-          'description': >
-            Failed to parse JSON or cannot save the list.
-        '500':
-          'description': 'Internal error.'
-      'summary': 'Set (dis)allowed clients, blocked hosts, etc.'
-      'tags':
-      - 'clients'
   '/rewrite/list':
     'get':
       'tags':

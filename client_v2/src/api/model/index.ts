@@ -1,6 +1,3 @@
-export * from './accessList';
-export * from './accessListResponse';
-export * from './accessSetRequest';
 export * from './addressesInfo';
 export * from './addressInfo';
 export * from './addUrlRequest';
@@ -12,7 +9,6 @@ export * from './checkConfigStaticIpInfo';
 export * from './checkConfigStaticIpInfoStatic';
 export * from './client';
 export * from './clientAuto';
-export * from './clientDelete';
 export * from './clientFindSubEntry';
 export * from './clients';
 export * from './clientsArray';

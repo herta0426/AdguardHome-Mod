@@ -106,8 +106,8 @@ func IfaceDNSIPAddrs(
 
 	switch len(addrs) {
 	case 0:
-		// Don't return errors in case the users want to try and enable the DHCP
-		// server later.
+		// Don't return an error: the caller only logs a missing address and
+		// keeps policing the interface.
 		t := time.Duration(n) * backoff
 		l.ErrorContext(ctx, "no ip addresses for iface", "attempts", n, "duration", t, "ipv", ipv)
 
