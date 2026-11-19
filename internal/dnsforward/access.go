@@ -1,14 +1,10 @@
 package dnsforward
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/netip"
-	"slices"
 	"strings"
 
-	"github.com/AdguardTeam/AdGuardHome/internal/aghhttp"
 	"github.com/AdguardTeam/AdGuardHome/internal/client"
 	"github.com/AdguardTeam/golibs/container"
 	"github.com/AdguardTeam/golibs/stringutil"
@@ -164,124 +160,4 @@ func (a *accessManager) isBlockedIP(ip netip.Addr) (blocked bool, rule string) {
 	}
 
 	return !blocked, ""
-}
-
-type accessListJSON struct {
-	AllowedClients    []string `json:"allowed_clients"`
-	DisallowedClients []string `json:"disallowed_clients"`
-	BlockedHosts      []string `json:"blocked_hosts"`
-}
-
-func (s *Server) accessListJSON() (j accessListJSON) {
-	s.serverLock.RLock()
-	defer s.serverLock.RUnlock()
-
-	return accessListJSON{
-		AllowedClients:    slices.Clone(s.conf.AllowedClients),
-		DisallowedClients: slices.Clone(s.conf.DisallowedClients),
-		BlockedHosts:      slices.Clone(s.conf.BlockedHosts),
-	}
-}
-
-// handleAccessList handles requests to the GET /control/access/list endpoint.
-func (s *Server) handleAccessList(w http.ResponseWriter, r *http.Request) {
-	aghhttp.WriteJSONResponseOK(r.Context(), s.logger, w, r, s.accessListJSON())
-}
-
-// validateAccessSet checks the internal accessListJSON lists.  To search for
-// duplicates, we cannot compare the new stringutil.Set and []string, because
-// creating a set for a large array can be an unnecessary algorithmic complexity
-func validateAccessSet(list *accessListJSON) (err error) {
-	allowed, err := validateStrUniq(list.AllowedClients)
-	if err != nil {
-		return fmt.Errorf("validating allowed clients: %w", err)
-	}
-
-	disallowed, err := validateStrUniq(list.DisallowedClients)
-	if err != nil {
-		return fmt.Errorf("validating disallowed clients: %w", err)
-	}
-
-	_, err = validateStrUniq(list.BlockedHosts)
-	if err != nil {
-		return fmt.Errorf("validating blocked hosts: %w", err)
-	}
-
-	allowed = allowed.Intersection(allowed, disallowed)
-	if allowed.Len() == 0 {
-		return nil
-	}
-
-	return fmt.Errorf(
-		"items in allowed and disallowed clients intersect: %s",
-		container.MapSetToString(allowed),
-	)
-}
-
-// validateStrUniq returns an informative error if clients are not unique.
-func validateStrUniq(clients []string) (m *container.MapSet[string], err error) {
-	var dup []string
-	m = container.NewMapSet[string]()
-	for _, client := range clients {
-		if m.Has(client) {
-			dup = append(dup, client)
-		}
-
-		m.Add(client)
-	}
-
-	if len(dup) != 0 {
-		slices.Sort(dup)
-
-		return nil, fmt.Errorf("duplicated values: %v", dup)
-	}
-
-	return m, nil
-}
-
-// handleAccessSet handles requests to the POST /control/access/set endpoint.
-func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	l := s.logger
-
-	list := &accessListJSON{}
-	err := json.NewDecoder(r.Body).Decode(&list)
-	if err != nil {
-		aghhttp.ErrorAndLog(ctx, l, r, w, http.StatusBadRequest, "decoding request: %s", err)
-
-		return
-	}
-
-	err = validateAccessSet(list)
-	if err != nil {
-		aghhttp.ErrorAndLog(ctx, l, r, w, http.StatusBadRequest, "%s", err)
-
-		return
-	}
-
-	var a *accessManager
-	a, err = newAccessCtx(list.AllowedClients, list.DisallowedClients, list.BlockedHosts)
-	if err != nil {
-		aghhttp.ErrorAndLog(ctx, l, r, w, http.StatusBadRequest, "creating access ctx: %s", err)
-
-		return
-	}
-
-	defer l.DebugContext(
-		ctx,
-		"updated access lists",
-		"allowed", len(list.AllowedClients),
-		"disallowed", len(list.DisallowedClients),
-		"blocked_hosts", len(list.BlockedHosts),
-	)
-
-	defer s.conf.ConfModifier.Apply(ctx)
-
-	s.serverLock.Lock()
-	defer s.serverLock.Unlock()
-
-	s.conf.AllowedClients = list.AllowedClients
-	s.conf.DisallowedClients = list.DisallowedClients
-	s.conf.BlockedHosts = list.BlockedHosts
-	s.access = a
 }

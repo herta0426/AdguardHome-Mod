@@ -829,9 +829,6 @@ func (s *Server) registerHandlers() {
 	s.conf.HTTPReg.Register(http.MethodPost, "/control/test_upstream_dns", s.handleTestUpstreamDNS)
 	s.conf.HTTPReg.Register(http.MethodPost, "/control/protection", s.handleSetProtection)
 
-	s.conf.HTTPReg.Register(http.MethodGet, "/control/access/list", s.handleAccessList)
-	s.conf.HTTPReg.Register(http.MethodPost, "/control/access/set", s.handleAccessSet)
-
 	s.conf.HTTPReg.Register(http.MethodPost, "/control/cache_clear", s.handleCacheClear)
 
 	webRegistered = true

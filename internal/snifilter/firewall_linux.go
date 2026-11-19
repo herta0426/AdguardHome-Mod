@@ -104,8 +104,8 @@ func (f *Filter) startFirewall(ctx context.Context) (err error) {
 	f.wg.Add(1)
 	go f.watchCounters(ctx)
 
-	// The ports and the drop_quic setting are only used to build
-	// the rules, so they don't affect AdGuard Home anymore.
+	// The ports are only used to build the rules, so they don't affect
+	// AdGuard Home anymore.
 	f.logger.InfoContext(
 		ctx,
 		"waiting for the packets; the netfilter rules are installed by the "+

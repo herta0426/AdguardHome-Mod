@@ -136,11 +136,6 @@ type Params struct {
 
 	// QueueNum is the number of the NFQUEUE queue used to receive the packets.
 	QueueNum uint16 `yaml:"queue_num"`
-
-	// DropQUIC defines whether to reject the UDP traffic to Ports in order to
-	// make the clients fall back to TCP.  The server names in QUIC are
-	// encrypted, so the SNI filter cannot inspect it.
-	DropQUIC bool `yaml:"drop_quic"`
 }
 
 // Validate returns an error if p isn't valid.
@@ -225,7 +220,6 @@ type Filter struct {
 
 	ports    []uint16
 	queueNum uint16
-	dropQUIC bool
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -304,7 +298,6 @@ func New(c *Config) (f *Filter, err error) {
 		queryLog: c.QueryLog,
 		ports:    slices.Clone(c.Ports),
 		queueNum: c.QueueNum,
-		dropQUIC: c.DropQUIC,
 	}
 	f.pktPool.New = func() (v any) { return &packet{} }
 
@@ -370,7 +363,6 @@ func (f *Filter) Start(ctx context.Context) (err error) {
 		"sni filter started",
 		"ports", f.ports,
 		"queue_num", f.queueNum,
-		"drop_quic", f.dropQUIC,
 	)
 
 	return nil

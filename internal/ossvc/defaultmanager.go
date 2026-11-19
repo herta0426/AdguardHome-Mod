@@ -279,8 +279,6 @@ func (m *manager) uninstall(ctx context.Context, action *ActionUninstall) (err e
 }
 
 // Paths to stdout and stderr logs for Darwin service manager.
-//
-// TODO(e.burkov):  Move to config_darwin.go.
 const (
 	launchdStdoutPath = "/var/log/AdGuardHome.stdout.log"
 	launchdStderrPath = "/var/log/AdGuardHome.stderr.log"
@@ -288,8 +286,6 @@ const (
 
 // removeLaunchdStdLogs removes launchd stdout and stderr log files, if needed,
 // and logs errors at warning level.
-//
-// TODO(e.burkov):  Move to manager_darwin.go.
 func removeLaunchdStdLogs(ctx context.Context, logger *slog.Logger) {
 	if runtime.GOOS != "darwin" {
 		return
